@@ -210,6 +210,15 @@
   <div id="diaryBox"></div>
 
   <div class="card">
+    <div class="chead"><span class="ctitle">🔁 매일 체크</span></div>
+    <div id="habitList"></div>
+    <div class="todo-add">
+      <input type="text" id="habitInput" placeholder="매일 반복할 항목 추가 (예: 오전 스트레칭)" autocomplete="off">
+      <button id="habitAddBtn">추가</button>
+    </div>
+  </div>
+
+  <div class="card">
     <div class="chead"><span class="ctitle">✅ 할 일</span></div>
     <div id="todoList"></div>
     <div class="todo-add">
@@ -278,6 +287,7 @@ const DIET_KEY="dietTracker.v1";
 const WORKOUT_KEY="workoutTracker.v1";
 
 let db=load();
+if(!Array.isArray(db.habits)) db.habits=[];
 let cursor=todayStr();
 let diaryEditing=false;
 
@@ -299,8 +309,11 @@ function dayData(date){
   const d=db.days[date];
   if(!Array.isArray(d.todos)) d.todos=[];
   if(!Array.isArray(d.photos)) d.photos=[];
+  if(!d.habitDone || typeof d.habitDone!=="object") d.habitDone={};
   return d;
 }
+// recurring habits active on a given date (date-scoped: shown from addedOn, hidden from removedOn onward)
+function activeHabits(date){ return db.habits.filter(h=> h.addedOn<=date && (!h.removedOn || date<h.removedOn)); }
 
 /* ============ IndexedDB (shared, read-only for diet/workout; own store for daily) ============ */
 const dbCache={};
@@ -446,6 +459,34 @@ function renderDiary(){
   }
 }
 
+/* ============ journal: recurring habits (매일 체크) ============ */
+function renderHabits(){
+  const box=document.getElementById("habitList");
+  const list=activeHabits(cursor);
+  const done=dayData(cursor).habitDone;
+  if(!list.length){ box.innerHTML=`<div class="todo-empty">매일 반복할 항목을 추가하세요. 추가한 날부터 매일 이 자리에 떠요.</div>`; return; }
+  box.innerHTML="";
+  list.forEach(h=>{
+    const on=!!done[h.id];
+    const row=document.createElement("div"); row.className="todo"+(on?" done":"");
+    row.innerHTML=`<div class="chk${on?" on":""}">${on?"✓":""}</div><div class="tx">${esc(h.name)}</div><button class="del">×</button>`;
+    row.querySelector(".chk").onclick=()=>{ if(done[h.id]) delete done[h.id]; else done[h.id]=true; save(); renderHabits(); };
+    row.querySelector(".del").onclick=()=>{ if(!confirm(`'${h.name}' 항목을 이 날짜부터 그만 표시할까요?\n지난 날짜의 기록은 그대로 남아요.`)) return; removeHabit(h); };
+    box.appendChild(row);
+  });
+}
+function addHabit(){
+  const inp=document.getElementById("habitInput"); const v=inp.value.trim(); if(!v) return;
+  db.habits.push({ id:"h_"+Date.now().toString(36)+Math.random().toString(36).slice(2,5), name:v, addedOn:cursor, removedOn:null });
+  save(); inp.value=""; renderHabits();
+}
+function removeHabit(h){
+  // if added on the viewed day, drop it entirely; otherwise stop it from this day forward (past days keep it)
+  if(h.addedOn===cursor){ db.habits=db.habits.filter(x=>x!==h); }
+  else { h.removedOn=cursor; }
+  save(); renderHabits();
+}
+
 /* ============ journal: todos ============ */
 function renderTodos(){
   const box=document.getElementById("todoList");
@@ -494,7 +535,7 @@ function closeViewer(){ document.getElementById("photoBackdrop").classList.remov
 /* ============ calendar ============ */
 let calMonth=null;
 function dayHasAny(ds){
-  const own=db.days[ds]; const hasOwn=!!own&&((own.diary&&own.diary.trim())||(own.todos&&own.todos.length)||(own.photos&&own.photos.length));
+  const own=db.days[ds]; const hasOwn=!!own&&((own.diary&&own.diary.trim())||(own.todos&&own.todos.length)||(own.photos&&own.photos.length)||(own.habitDone&&Object.keys(own.habitDone).length));
   const {count}=dietTotals(ds); const w=workoutDay(ds); const hasW=!!w&&((w.workouts&&w.workouts.length)||(w.body&&(w.body.weight||w.body.waist)));
   return hasOwn||count>0||hasW;
 }
@@ -543,7 +584,7 @@ function render(){
   document.getElementById("dLabel").textContent = cursor===todayStr()?"오늘":`${d.getMonth()+1}월 ${d.getDate()}일`;
   document.getElementById("dSub").textContent = `${cursor} (${wk})`;
   renderDiet(); renderWorkout();
-  diaryEditing=false; renderDiary(); renderTodos(); renderMyPhotos();
+  diaryEditing=false; renderDiary(); renderHabits(); renderTodos(); renderMyPhotos();
 }
 
 /* ============ events ============ */
@@ -564,6 +605,8 @@ document.getElementById("photoDelete").onclick=async()=>{ if(viewerDeleteId==nul
   const arr=dayData(cursor).photos; const i=arr.indexOf(viewerDeleteId); if(i>=0) arr.splice(i,1); save(); try{ await idbDel("dailyPhotos",viewerDeleteId); }catch(e){} closeViewer(); renderMyPhotos(); toast("사진을 삭제했어요"); };
 document.getElementById("todoAddBtn").onclick=addTodo;
 document.getElementById("todoInput").addEventListener("keydown",e=>{ if(e.key==="Enter") addTodo(); });
+document.getElementById("habitAddBtn").onclick=addHabit;
+document.getElementById("habitInput").addEventListener("keydown",e=>{ if(e.key==="Enter") addHabit(); });
 document.getElementById("photoInput").onchange=async(e)=>{ const f=e.target.files[0]; if(!f) return;
   try{ const du=await fileToDataUrl(f); const id="d_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
     await idbPut("dailyPhotos",id,du); dayData(cursor).photos.push(id); save(); renderMyPhotos(); toast("사진을 저장했어요"); }catch(err){ toast("사진 저장 실패"); }
