@@ -862,7 +862,7 @@ render();
     <label class="flabel">음식명</label>
     <div class="namerow">
       <input type="text" id="fName" placeholder="예) 계란후라이" autocomplete="off">
-      <button type="button" id="askGemini" class="iconbtn" title="영양성분 질문 복사">🔍</button>
+      <button type="button" id="askGemini" class="iconbtn" title="Solar로 영양성분 자동 채우기">✨</button>
     </div>
     <div id="nameSuggest" class="suggest" style="display:none"></div>
     <div id="autofillNote" class="afnote" style="display:none">💾 저장된 값을 불러왔어요 (양·값 수정 가능)</div>
@@ -879,7 +879,7 @@ render();
       <div class="n"><input type="number" step="0.1" id="fProt" value="0"><div class="l">단백질</div></div>
       <div class="n"><input type="number" step="0.1" id="fFat" value="0"><div class="l">지방</div></div>
     </div>
-    <div class="hint">1회 값을 넣으면 수량을 바꿀 때 자동 계산돼요. 저장하면 같은 음식은 다음에 자동으로 채워집니다.</div>
+    <div class="hint">음식명 옆 ✨ 버튼을 누르면 Solar가 영양성분을 자동으로 채워줘요 (추정값, 수정 가능). 저장하면 같은 음식은 다음에 자동으로 채워집니다.</div>
 
     <div class="actions">
       <button class="btn ghost" id="addCancel">취소</button>
@@ -990,6 +990,7 @@ const MEALS = [
   {key:"snack",     emo:"🍪", name:"간식"},
 ];
 const STORE_KEY = "dietTracker.v1";
+const SOLAR_PROXY = "https://solar.slutica.workers.dev"; // Cloudflare Worker (Solar 영양성분 자동 채우기)
 
 let db = load();
 if(!db.custom) db.custom={};   // migrate older saved data
@@ -1265,7 +1266,28 @@ function renderSuggest(q){
   });
   box.style.display="block";
 }
-// copy a ready-made nutrition question to the clipboard (no app opening)
+// auto-fill nutrition via Solar (through the Cloudflare Worker proxy)
+async function autoFill(){
+  const name=document.getElementById("fName").value.trim();
+  if(!name){ toast("음식명을 먼저 입력하세요"); return; }
+  const btn=document.getElementById("askGemini"); const old=btn.textContent;
+  btn.textContent="…"; btn.disabled=true; toast("Solar가 영양성분 찾는 중…");
+  try{
+    const r=await fetch(SOLAR_PROXY,{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({name}) });
+    let d={}; try{ d=await r.json(); }catch(e){}
+    if(!r.ok || d.error){ toast("자동 조회 실패: "+((d&&d.error)||("HTTP "+r.status))); return; }
+    document.getElementById("fQty").value = d.quantity||1;
+    document.getElementById("fUnit").value = d.unit||"인분";
+    document.getElementById("fKcal").value = round(d.kcal);
+    document.getElementById("fCarb").value = round1(d.carb);
+    document.getElementById("fProt").value = round1(d.protein);
+    document.getElementById("fFat").value  = round1(d.fat);
+    formBase={ q:Number(d.quantity)||1, kcal:+d.kcal||0, carb:+d.carb||0, protein:+d.protein||0, fat:+d.fat||0 };
+    const note=document.getElementById("autofillNote"); note.textContent="✨ Solar 추정값을 불러왔어요 (양·값 수정 가능)"; note.style.display="block";
+  }catch(e){ toast("네트워크 오류로 실패했어요"); }
+  finally{ btn.textContent=old; btn.disabled=false; }
+}
+// (기존) 영양성분 질문을 클립보드에 복사 — 필요 시 수동 사용
 async function askGemini(){
   const name=document.getElementById("fName").value.trim();
   if(!name){ toast("음식명을 먼저 입력하세요"); return; }
@@ -1699,7 +1721,7 @@ document.getElementById("calClose").onclick=closeCalendar;
 document.getElementById("calBackdrop").onclick=e=>{ if(e.target.id==="calBackdrop") closeCalendar(); };
 document.getElementById("addCancel").onclick=closeAdd;
 document.getElementById("saveFood").onclick=saveFood;
-document.getElementById("askGemini").onclick=askGemini;
+document.getElementById("askGemini").onclick=autoFill;
 document.getElementById("fName").addEventListener("input", onNameInput);
 document.getElementById("fQty").addEventListener("input", onQtyChange);
 ["fKcal","fCarb","fProt","fFat"].forEach(id=>document.getElementById(id).addEventListener("input", onNutrientEdit));
