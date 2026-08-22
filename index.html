@@ -38,11 +38,13 @@
 <div id="app">
   <div class="frames">
     <iframe id="f-daily" title="데일리"></iframe>
+    <iframe id="f-diary" title="일기"></iframe>
     <iframe id="f-diet" title="식단"></iframe>
     <iframe id="f-workout" title="운동"></iframe>
   </div>
   <nav class="tabbar">
-    <button data-tab="daily" class="on"><span class="ic">📓</span>데일리</button>
+    <button data-tab="daily" class="on"><span class="ic">🏠</span>데일리</button>
+    <button data-tab="diary"><span class="ic">📔</span>일기</button>
     <button data-tab="diet"><span class="ic">🥗</span>식단</button>
     <button data-tab="workout"><span class="ic">💪</span>운동</button>
   </nav>
@@ -209,8 +211,6 @@
   </div>
 
   <!-- My journal -->
-  <div id="diaryBox"></div>
-
   <div class="card">
     <div class="chead"><span class="ctitle">🔁 매일 체크</span></div>
     <div id="habitList"></div>
@@ -669,7 +669,7 @@ function render(){
   document.getElementById("dLabel").textContent = cursor===todayStr()?"오늘":`${d.getMonth()+1}월 ${d.getDate()}일`;
   document.getElementById("dSub").textContent = `${cursor} (${wk})`;
   renderDiet(); renderWorkout();
-  diaryEditing=false; renderDiary(); renderHabits(); renderTodos(); renderMyPhotos();
+  renderHabits(); renderTodos(); renderMyPhotos();
 }
 
 /* ============ events ============ */
@@ -700,6 +700,239 @@ document.getElementById("photoInput").onchange=async(e)=>{ const f=e.target.file
 [document.getElementById("calBackdrop"),document.getElementById("setBackdrop"),document.getElementById("photoBackdrop")].forEach(bd=>{
   bd.addEventListener("click",e=>{ if(e.target===bd) bd.classList.remove("on"); });
 });
+
+let toastTimer=null;
+function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("on"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("on"),1600); }
+
+render();
+<\/script>
+</body>
+</html>
+</script>
+<script type="text/html" id="src-diary"><!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>일기</title>
+<style>
+  :root{ color-scheme: light; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; background:#f5f6f8; color:#1c1e21; -webkit-font-smoothing:antialiased; }
+  input, textarea, select, button{ font-size:16px; }
+  .wrap{ max-width:520px; margin:0 auto; padding:calc(16px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(60px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left)); }
+
+  .datebar{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:14px; }
+  .datebar .nav{ background:#fff; border:1px solid #e2e5ea; border-radius:10px; width:38px; height:38px; font-size:18px; cursor:pointer; }
+  .datebar .today{ text-align:center; cursor:pointer; padding:2px 6px; border-radius:10px; flex:1; }
+  .datebar .today:active{ background:#eceef2; }
+  .datebar .today .d{ font-size:17px; font-weight:700; }
+  .datebar .today .caret{ font-size:11px; color:#b3b8bf; }
+  .datebar .today .sub{ font-size:12px; color:#8a8f98; }
+
+  .card{ background:#fff; border:1px solid #e8ebf0; border-radius:16px; padding:15px; margin-bottom:12px; box-shadow:0 1px 2px rgba(0,0,0,.03); }
+  .card .ctitle{ font-size:14px; font-weight:700; display:flex; align-items:center; gap:7px; margin-bottom:10px; }
+
+  /* schedule */
+  .ev{ display:flex; gap:10px; padding:8px 0; border-top:1px solid #f0f2f5; }
+  .ev:first-child{ border-top:none; }
+  .ev .t{ flex:0 0 auto; width:52px; font-size:13px; font-weight:700; color:#6d5efc; }
+  .ev .t.allday{ color:#8a8f98; font-weight:600; }
+  .ev .nm{ flex:1; font-size:14px; color:#2c2c2a; word-break:break-word; }
+  .schmsg{ color:#b3b8bf; font-size:13px; padding:4px 0; }
+  .refresh{ background:#f2f4f7; border:1px solid #e2e5ea; border-radius:99px; padding:4px 10px; font-size:12px; font-weight:600; color:#5a5f68; cursor:pointer; margin-left:auto; }
+
+  /* diary */
+  .diary-write{ width:100%; background:#fff; border:1px dashed #cfd4da; border-radius:16px; padding:16px; font-size:14px; font-weight:600; color:#5a5f68; cursor:pointer; }
+  .diary-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+  .diary-btns button{ background:none; border:none; font-size:13px; color:#8a8f98; cursor:pointer; padding:4px 6px; }
+  .diary-btns button.del{ color:#d64545; }
+  .diary-text{ font-size:15px; color:#2c2c2a; line-height:1.7; white-space:pre-wrap; word-break:break-word; }
+  .diary textarea{ width:100%; border:1px solid #d7dbe0; border-radius:12px; padding:12px; font-size:15px; font-family:inherit; resize:vertical; min-height:180px; }
+  .diary-actions{ display:flex; gap:10px; margin-top:10px; }
+  .diary-actions button{ flex:1; border:none; border-radius:12px; padding:12px; font-size:14px; font-weight:700; cursor:pointer; }
+  .diary-actions .cancel{ background:#eef0f3; color:#3a3f47; }
+  .diary-actions .save{ background:#6d5efc; color:#fff; }
+
+  /* calendar modal */
+  .backdrop{ position:fixed; inset:0; background:rgba(20,22,26,.42); display:none; align-items:flex-end; justify-content:center; z-index:50; }
+  .backdrop.on{ display:flex; }
+  .sheet{ background:#fff; width:100%; max-width:520px; border-radius:20px 20px 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom)); max-height:88vh; overflow:auto; }
+  @media(min-width:560px){ .backdrop{ align-items:center; } .sheet{ border-radius:20px; } }
+  .calhead{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .caltitle{ font-size:16px; font-weight:700; }
+  .calgrid{ display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .caldow{ margin-bottom:6px; }
+  .caldow span{ text-align:center; font-size:11px; color:#8a8f98; padding:2px 0; }
+  .calcell{ aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; border-radius:10px; font-size:14px; cursor:pointer; position:relative; color:#1c1e21; }
+  .calcell.empty{ cursor:default; }
+  .calcell.today{ border:1.5px solid #6d5efc; }
+  .calcell.sel{ background:#1c1e21; color:#fff; }
+  .calcell .dot{ width:5px; height:5px; border-radius:50%; background:#6d5efc; position:absolute; bottom:5px; left:50%; transform:translateX(-50%); }
+  .calcell.sel .dot{ background:#fff; }
+  .nav{ background:#fff; border:1px solid #e2e5ea; border-radius:10px; width:38px; height:38px; font-size:18px; cursor:pointer; }
+  .actions{ display:flex; gap:10px; margin-top:16px; }
+  .btn{ flex:1; border:none; border-radius:12px; padding:13px; font-size:15px; font-weight:700; cursor:pointer; }
+  .btn.primary{ background:#6d5efc; color:#fff; }
+  .btn.ghost{ background:#eef0f3; color:#3a3f47; }
+
+  .toast{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#1c1e21; color:#fff; padding:10px 18px; border-radius:99px; font-size:13px; opacity:0; transition:.25s; z-index:99; pointer-events:none; }
+  .toast.on{ opacity:1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="datebar">
+    <button class="nav" id="prevDay">‹</button>
+    <div class="today" id="dateBtn">
+      <div class="d"><span id="dLabel">오늘</span> <span class="caret">▾</span></div>
+      <div class="sub" id="dSub"></div>
+    </div>
+    <button class="nav" id="nextDay">›</button>
+  </div>
+
+  <div class="card">
+    <div class="ctitle">📅 오늘 일정 <button class="refresh" id="calRefresh">새로고침</button></div>
+    <div id="schedule"></div>
+  </div>
+
+  <div id="diaryBox"></div>
+</div>
+
+<!-- Calendar modal -->
+<div class="backdrop" id="calBackdrop">
+  <div class="sheet">
+    <div class="calhead">
+      <button class="nav" id="calPrev">‹</button>
+      <div class="caltitle" id="calTitle"></div>
+      <button class="nav" id="calNext">›</button>
+    </div>
+    <div class="calgrid caldow" id="calDow"></div>
+    <div class="calgrid" id="calDays"></div>
+    <div class="actions">
+      <button class="btn ghost" id="calToday">오늘로</button>
+      <button class="btn primary" id="calClose">닫기</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const STORE_KEY="dailyLog.v1";
+const CAL_PROXY="https://solar.slutica.workers.dev";
+let db=load();
+let cursor=todayStr();
+let diaryEditing=false;
+let calMonth=null;
+const evCache={}; // date -> events (그날 캐시)
+
+function load(){ try{ return JSON.parse(localStorage.getItem(STORE_KEY))||fresh(); }catch(e){ return fresh(); } }
+function fresh(){ return { days:{} }; }
+function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(db)); }
+function todayStr(){ return fmt(new Date()); }
+function fmt(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function parseD(s){ const [y,m,dd]=s.split("-").map(Number); return new Date(y,m-1,dd); }
+function shiftDay(n){ const d=parseD(cursor); d.setDate(d.getDate()+n); cursor=fmt(d); render(); }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function dayData(date){ if(!db.days[date]) db.days[date]={ diary:"", todos:[], photos:[] }; return db.days[date]; }
+
+/* ---------- schedule (구글 캘린더) ---------- */
+async function loadSchedule(force){
+  const box=document.getElementById("schedule");
+  const date=cursor;
+  if(!force && evCache[date]){ renderSchedule(evCache[date]); return; }
+  box.innerHTML='<div class="schmsg">일정 불러오는 중…</div>';
+  try{
+    const r=await fetch(CAL_PROXY,{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"calendar", date:date}) });
+    const d=await r.json();
+    if(d.error){
+      if(d.error==="no calendar url") box.innerHTML='<div class="schmsg">캘린더가 아직 연결되지 않았어요. (Worker에 GCAL_ICS_URL 설정 필요)</div>';
+      else box.innerHTML='<div class="schmsg">일정을 불러오지 못했어요: '+esc(d.error)+'</div>';
+      return;
+    }
+    const evs=d.events||[];
+    if(date===cursor){ evCache[date]=evs; renderSchedule(evs); }
+  }catch(e){
+    box.innerHTML='<div class="schmsg">네트워크 오류로 일정을 못 불러왔어요.</div>';
+  }
+}
+function renderSchedule(evs){
+  const box=document.getElementById("schedule");
+  if(!evs.length){ box.innerHTML='<div class="schmsg">이 날 일정이 없어요.</div>'; return; }
+  box.innerHTML=evs.map(e=>`<div class="ev"><div class="t${e.allDay?" allday":""}">${e.allDay?"종일":esc(e.time||"")}</div><div class="nm">${esc(e.title||"")}</div></div>`).join("");
+}
+
+/* ---------- diary ---------- */
+function renderDiary(){
+  const box=document.getElementById("diaryBox");
+  const text=dayData(cursor).diary||"";
+  if(diaryEditing){
+    box.innerHTML=`<div class="card diary">
+      <div class="ctitle">📔 오늘의 일기</div>
+      <textarea id="diaryInput" placeholder="오늘 하루 어땠나요? 있었던 일, 생각, 느낀 점을 자유롭게 적어보세요."></textarea>
+      <div class="diary-actions"><button class="cancel" id="diaryCancel">취소</button><button class="save" id="diarySave">저장</button></div>
+    </div>`;
+    const ta=document.getElementById("diaryInput"); ta.value=text;
+    document.getElementById("diaryCancel").onclick=()=>{ diaryEditing=false; renderDiary(); };
+    document.getElementById("diarySave").onclick=()=>{
+      const v=ta.value.trim();
+      if(v) dayData(cursor).diary=v; else delete dayData(cursor).diary;
+      save(); diaryEditing=false; renderDiary(); toast(v?"일기를 저장했어요":"일기를 비웠어요");
+    };
+    setTimeout(()=>ta.focus(),50);
+  } else if(text){
+    box.innerHTML=`<div class="card diary">
+      <div class="diary-head"><span class="ctitle" style="margin:0">📔 오늘의 일기</span>
+        <span class="diary-btns"><button id="diaryEdit">수정</button><button class="del" id="diaryDelete">삭제</button></span></div>
+      <div class="diary-text">${esc(text)}</div>
+    </div>`;
+    document.getElementById("diaryEdit").onclick=()=>{ diaryEditing=true; renderDiary(); };
+    document.getElementById("diaryDelete").onclick=()=>{ if(!confirm("이 날의 일기를 삭제할까요?")) return; delete dayData(cursor).diary; save(); renderDiary(); toast("일기를 삭제했어요"); };
+  } else {
+    box.innerHTML=`<button class="diary-write" id="diaryWrite">＋ 오늘의 일기 쓰기</button>`;
+    document.getElementById("diaryWrite").onclick=()=>{ diaryEditing=true; renderDiary(); };
+  }
+}
+
+/* ---------- calendar modal ---------- */
+function dayHasDiary(ds){ const d=db.days[ds]; return !!d && d.diary && d.diary.trim(); }
+function openCalendar(){ const d=parseD(cursor); calMonth=new Date(d.getFullYear(),d.getMonth(),1); renderCalendar(); document.getElementById("calBackdrop").classList.add("on"); }
+function closeCalendar(){ document.getElementById("calBackdrop").classList.remove("on"); }
+function renderCalendar(){
+  const y=calMonth.getFullYear(), m=calMonth.getMonth();
+  document.getElementById("calTitle").textContent=`${y}년 ${m+1}월`;
+  document.getElementById("calDow").innerHTML=["일","월","화","수","목","금","토"].map((w,i)=>`<span style="${i===0?'color:#d64545':(i===6?'color:#2f6bbd':'')}">${w}</span>`).join("");
+  const days=document.getElementById("calDays"); days.innerHTML="";
+  const startDow=new Date(y,m,1).getDay(), n=new Date(y,m+1,0).getDate();
+  for(let i=0;i<startDow;i++){ const c=document.createElement("div"); c.className="calcell empty"; days.appendChild(c); }
+  for(let dd=1;dd<=n;dd++){ const ds=`${y}-${String(m+1).padStart(2,"0")}-${String(dd).padStart(2,"0")}`;
+    const c=document.createElement("div"); c.className="calcell";
+    if(ds===cursor) c.classList.add("sel"); else if(ds===todayStr()) c.classList.add("today");
+    c.innerHTML=`<span>${dd}</span>`+(dayHasDiary(ds)?`<span class="dot"></span>`:"");
+    c.onclick=()=>{ cursor=ds; closeCalendar(); render(); };
+    days.appendChild(c);
+  }
+}
+
+/* ---------- render ---------- */
+function render(){
+  const d=parseD(cursor); const wk=["일","월","화","수","목","금","토"][d.getDay()];
+  document.getElementById("dLabel").textContent = cursor===todayStr()?"오늘":`${d.getMonth()+1}월 ${d.getDate()}일`;
+  document.getElementById("dSub").textContent = `${cursor} (${wk})`;
+  diaryEditing=false; renderDiary();
+  loadSchedule(false);
+}
+
+document.getElementById("prevDay").onclick=()=>shiftDay(-1);
+document.getElementById("nextDay").onclick=()=>shiftDay(1);
+document.getElementById("dateBtn").onclick=openCalendar;
+document.getElementById("calRefresh").onclick=()=>loadSchedule(true);
+document.getElementById("calPrev").onclick=()=>{ calMonth.setMonth(calMonth.getMonth()-1); renderCalendar(); };
+document.getElementById("calNext").onclick=()=>{ calMonth.setMonth(calMonth.getMonth()+1); renderCalendar(); };
+document.getElementById("calToday").onclick=()=>{ cursor=todayStr(); closeCalendar(); render(); };
+document.getElementById("calClose").onclick=closeCalendar;
+document.getElementById("calBackdrop").addEventListener("click",e=>{ if(e.target.id==="calBackdrop") closeCalendar(); });
 
 let toastTimer=null;
 function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("on"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("on"),1600); }
@@ -2591,6 +2824,7 @@ function srcFor(id){
 }
 var frames={
   daily:{ el:document.getElementById("f-daily"), src:"src-daily", loaded:false, reload:true },
+  diary:{ el:document.getElementById("f-diary"), src:"src-diary", loaded:false, reload:false },
   diet:{ el:document.getElementById("f-diet"), src:"src-diet", loaded:false, reload:false },
   workout:{ el:document.getElementById("f-workout"), src:"src-workout", loaded:false, reload:false }
 };
