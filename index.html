@@ -770,8 +770,7 @@ const REPORT_HEAD = '<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">
  + '.mlabel{font-weight:700;font-size:14px;margin-bottom:4px;}'
  + '.food{display:flex;justify-content:space-between;font-size:14px;gap:8px;}.food small{color:#9aa0a8;}.food b{white-space:nowrap;}'
  + '.fmac{font-size:12px;color:#9aa0a8;margin:2px 0 6px;}'
- + '.cardiobox{background:#f2effe;border:1px solid #e4dcff;border-radius:10px;padding:12px 14px;}'
- + '.cardio{font-size:16px;font-weight:800;color:#1c1e21;padding:3px 0;}.cardio small{color:#5a5f68;font-weight:600;font-size:14px;}'
+ + '.cardio{font-size:14px;color:#1c1e21;padding:3px 0;}.cardio small{color:#9aa0a8;}'
  + '.none{color:#b3b8bf;font-size:13px;padding:4px 0;}'
  + '@media(max-width:520px){.mealrow{flex-direction:column;}.mealrow .r{max-width:260px;flex:none;}}'
  + '</style></head><body><div class="wrapR">';
@@ -807,7 +806,7 @@ async function generateShareReport(){
     // 유산소 (내용 + 사진)
     let cardioTxt = cardio.length ? cardio.map(w=>{ const p=[]; if(w.minutes)p.push(fmtDurMin(w.minutes)); if(w.distance)p.push(w.distance+"km"); if(w.pace)p.push(w.pace+"/km"); if(w.hr)p.push("♥"+w.hr); if(w.kcal)p.push(w.kcal+"kcal"); return '<div class="cardio">🏃 '+esc(w.name)+' <small>'+esc(p.join(" · "))+'</small></div>'; }).join("") : '<div class="none">유산소 기록 없음</div>';
     let woPhoto=null; const wids=(wd&&wd.photos)||[]; if(wids.length){ try{ woPhoto=await idbGet("workoutPhotos", wids[0]); }catch(e){} }
-    let cardioHtml = '<div class="mealrow"><div class="l"><div class="cardiobox">'+cardioTxt+'</div></div>'+(woPhoto?'<div class="r"><img src="'+woPhoto+'"></div>':'')+'</div>';
+    let cardioHtml = '<div class="mealrow"><div class="l">'+cardioTxt+'</div>'+(woPhoto?'<div class="r"><img src="'+woPhoto+'"></div>':'')+'</div>';
 
     body += '<section class="day"><h2>'+date+' ('+wk+')</h2>'
       + '<div class="tot"><b>'+round(t.kcal)+'</b> kcal · 탄 '+round(t.carb)+'g · 단 '+round(t.protein)+'g · 지 '+round(t.fat)+'g</div>'
