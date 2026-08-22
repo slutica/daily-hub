@@ -154,6 +154,7 @@
   .ph-add{ width:72px; height:72px; border-radius:10px; border:1px dashed #cfd4da; background:#f7f8fa; font-size:22px; color:#9aa0a8; cursor:pointer; }
   .csvbtn{ width:100%; background:#fff; border:1px solid #d7dbe0; border-radius:12px; padding:13px; font-size:14px; font-weight:600; color:#3a3f47; cursor:pointer; margin-bottom:12px; }
   .csvbtn:active{ background:#f2f4f7; }
+  .shdate{ flex:1; min-width:0; border:1px solid #d7dbe0; border-radius:10px; padding:10px; font-size:15px; }
 
   /* calendar / modal */
   .backdrop{ position:fixed; inset:0; background:rgba(20,22,26,.42); display:none; align-items:flex-end; justify-content:center; z-index:50; }
@@ -235,6 +236,17 @@
   <div class="card">
     <div class="chead"><span class="ctitle">📷 오늘의 사진</span></div>
     <div class="ph-row" id="myPhotos"></div>
+  </div>
+
+  <div class="card">
+    <div class="chead"><span class="ctitle">👩‍🏫 PT 선생님 공유</span></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+      <input type="date" id="shStart" class="shdate">
+      <span style="color:#8a8f98">~</span>
+      <input type="date" id="shEnd" class="shdate">
+    </div>
+    <button class="csvbtn" id="shBtn">📄 공유 페이지 만들기 (식단·사진·유산소)</button>
+    <div style="font-size:11px;color:#9a9fa8;margin-top:6px;line-height:1.5;">선택한 기간의 날짜별 총영양·식단·사진·유산소를 한 페이지로 만들어요. 생성된 파일을 선생님께 공유하면 앱 없이도 볼 수 있어요.</div>
   </div>
 
   <div class="card">
@@ -740,6 +752,74 @@ async function onFullFile(e){
   e.target.value="";
 }
 
+/* ============ PT 공유 리포트 ============ */
+const REPORT_HEAD = '<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>운동·식단 리포트</title><style>'
+ + 'body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;background:#f5f6f8;color:#1c1e21;margin:0;padding:20px;}'
+ + '.wrapR{max-width:680px;margin:0 auto;}'
+ + 'h1{font-size:20px;margin:0 0 2px;}.range{color:#8a8f98;font-size:14px;margin-bottom:18px;}'
+ + '.day{background:#fff;border:1px solid #e8ebf0;border-radius:14px;padding:16px;margin-bottom:14px;}'
+ + '.day h2{font-size:16px;margin:0 0 8px;}'
+ + '.tot{font-size:14px;color:#3a3f47;margin-bottom:4px;background:#f7f8fa;border-radius:10px;padding:10px 12px;}.tot b{font-size:22px;}'
+ + '.sh{font-size:13px;color:#6a6f78;margin:14px 0 4px;font-weight:700;}'
+ + '.mealrow{display:flex;gap:12px;align-items:flex-start;border-top:1px solid #f0f2f5;padding:10px 0;}'
+ + '.mealrow .l{flex:1;min-width:0;}.mealrow .r{flex:0 0 42%;max-width:260px;}.mealrow .r img{width:100%;border-radius:10px;display:block;}'
+ + '.mlabel{font-weight:700;font-size:14px;margin-bottom:4px;}'
+ + '.food{display:flex;justify-content:space-between;font-size:14px;gap:8px;}.food small{color:#9aa0a8;}.food b{white-space:nowrap;}'
+ + '.fmac{font-size:12px;color:#9aa0a8;margin:2px 0 6px;}'
+ + '.cardio{font-size:14px;padding:3px 0;}.cardio small{color:#9aa0a8;}'
+ + '.none{color:#b3b8bf;font-size:13px;padding:4px 0;}'
+ + '@media(max-width:520px){.mealrow{flex-direction:column;}.mealrow .r{max-width:100%;flex:none;}}'
+ + '</style></head><body><div class="wrapR">';
+const REPORT_FOOT = '<div style="text-align:center;color:#b3b8bf;font-size:12px;margin:16px 0;">데일리 허브에서 생성됨</div></div></body></html>';
+
+async function generateShareReport(){
+  let start=document.getElementById("shStart").value, end=document.getElementById("shEnd").value;
+  if(!start||!end){ toast("시작/종료 날짜를 선택하세요"); return; }
+  if(start>end){ const t=start; start=end; end=t; }
+  toast("공유 페이지 만드는 중…");
+  const ddb=readOther(DIET_KEY), wdb=readOther(WORKOUT_KEY);
+  const mealDefs=[["breakfast","🌅 아침"],["lunch","🍱 점심"],["dinner","🌙 저녁"],["snack","🍪 간식"]];
+  const dates=[]; let dcur=new Date(start+"T00:00:00"); const dend=new Date(end+"T00:00:00");
+  while(dcur<=dend){ dates.push(fmt(dcur)); dcur.setDate(dcur.getDate()+1); }
+  let body="";
+  for(const date of dates){
+    const dd=ddb&&ddb.days&&ddb.days[date];
+    const wd=wdb&&wdb.days&&wdb.days[date];
+    let t={kcal:0,carb:0,protein:0,fat:0};
+    if(dd&&dd.meals) Object.values(dd.meals).forEach(l=>(l||[]).forEach(it=>{t.kcal+=it.kcal||0;t.carb+=it.carb||0;t.protein+=it.protein||0;t.fat+=it.fat||0;}));
+    const cardio=((wd&&wd.workouts)||[]).filter(w=>w.type==="cardio");
+    const dObj=new Date(date+"T00:00:00"); const wk=["일","월","화","수","목","금","토"][dObj.getDay()];
+    // 끼니별 행 (내용 왼쪽 + 사진 오른쪽)
+    let mealsHtml="";
+    for(const md of mealDefs){
+      const mk=md[0], label=md[1];
+      const items=(dd&&dd.meals&&dd.meals[mk])||[];
+      let photo=null; try{ photo=await idbGet("dietPhotos", date+"__"+mk); }catch(e){}
+      if(!items.length && !photo) continue;
+      let its = items.length ? items.map(it=>'<div class="food"><span>'+esc(it.name)+' <small>'+(it.quantity?esc(String(it.quantity))+esc(it.unit||""):"")+'</small></span><b>'+round(it.kcal)+'kcal</b></div><div class="fmac">탄 '+round1(it.carb)+' · 단 '+round1(it.protein)+' · 지 '+round1(it.fat)+'</div>').join("") : '<div class="none">기록 없음</div>';
+      mealsHtml += '<div class="mealrow"><div class="l"><div class="mlabel">'+label+'</div>'+its+'</div>'+(photo?'<div class="r"><img src="'+photo+'"></div>':'')+'</div>';
+    }
+    // 유산소 (내용 + 사진)
+    let cardioTxt = cardio.length ? cardio.map(w=>{ const p=[]; if(w.minutes)p.push(fmtDurMin(w.minutes)); if(w.distance)p.push(w.distance+"km"); if(w.pace)p.push(w.pace+"/km"); if(w.hr)p.push("♥"+w.hr); if(w.kcal)p.push(w.kcal+"kcal"); return '<div class="cardio">🏃 '+esc(w.name)+' <small>'+esc(p.join(" · "))+'</small></div>'; }).join("") : '<div class="none">유산소 기록 없음</div>';
+    let woPhoto=null; const wids=(wd&&wd.photos)||[]; if(wids.length){ try{ woPhoto=await idbGet("workoutPhotos", wids[0]); }catch(e){} }
+    let cardioHtml = '<div class="mealrow"><div class="l">'+cardioTxt+'</div>'+(woPhoto?'<div class="r"><img src="'+woPhoto+'"></div>':'')+'</div>';
+
+    body += '<section class="day"><h2>'+date+' ('+wk+')</h2>'
+      + '<div class="tot"><b>'+round(t.kcal)+'</b> kcal · 탄 '+round(t.carb)+'g · 단 '+round(t.protein)+'g · 지 '+round(t.fat)+'g</div>'
+      + '<div class="sh">🥗 식단</div>'+(mealsHtml||'<div class="none">식단 기록 없음</div>')
+      + '<div class="sh">🏃 유산소</div>'+cardioHtml
+      + '</section>';
+  }
+  const html = REPORT_HEAD + '<h1>운동·식단 리포트</h1><div class="range">'+start+' ~ '+end+'</div>' + body + REPORT_FOOT;
+  const fname = "PT공유_"+start+"_"+end+".html";
+  try{
+    const file=new File([html], fname, {type:"text/html"});
+    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:"운동·식단 리포트"}); toast("공유 시트를 열었어요"); return; }
+  }catch(err){ if(err&&err.name==="AbortError") return; }
+  downloadBlob(new Blob([html],{type:"text/html"}), fname);
+  toast("공유 페이지를 저장했어요");
+}
+
 /* ============ settings / backup ============ */
 function openSettings(){ document.getElementById("setBackdrop").classList.add("on"); }
 function closeSettings(){ document.getElementById("setBackdrop").classList.remove("on"); }
@@ -785,6 +865,8 @@ document.getElementById("excelBtn").onclick=exportExcel;
 document.getElementById("fullBackupBtn").onclick=exportFull;
 document.getElementById("fullRestoreBtn").onclick=pickFull;
 document.getElementById("fullInput").addEventListener("change", onFullFile);
+document.getElementById("shBtn").onclick=generateShareReport;
+(function(){ const sD=new Date(); sD.setDate(sD.getDate()-6); document.getElementById("shStart").value=fmt(sD); document.getElementById("shEnd").value=todayStr(); })();
 document.getElementById("backupExport").onclick=backupExport;
 document.getElementById("backupImport").onclick=backupImport;
 document.getElementById("backupInput").onchange=onBackupFile;
