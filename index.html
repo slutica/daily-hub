@@ -183,6 +183,7 @@
   .toast{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#1c1e21; color:#fff; padding:10px 18px; border-radius:99px; font-size:13px; opacity:0; transition:.25s; z-index:99; pointer-events:none; }
   .toast.on{ opacity:1; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"><\/script>
 </head>
 <body>
 <div class="wrap">
@@ -236,7 +237,16 @@
     <div class="ph-row" id="myPhotos"></div>
   </div>
 
-  <button class="csvbtn" id="dailyCsvBtn">⬇ CSV 내보내기 (식단·운동·데일리 통합)</button>
+  <div class="card">
+    <div class="chead"><span class="ctitle">💾 백업 · 내보내기</span></div>
+    <button class="csvbtn" id="excelBtn">📊 전체 Excel 내보내기 (식단·운동·일기·데일리)</button>
+    <button class="csvbtn" id="dailyCsvBtn">⬇ 요약 CSV 내보내기 (날짜별 한 줄)</button>
+    <button class="csvbtn" id="fullBackupBtn">💾 전체 백업 (.json) — 사진 포함</button>
+    <button class="csvbtn" id="fullRestoreBtn">♻️ 전체 복원 (.json)</button>
+    <div style="font-size:11px;color:#9a9fa8;margin-top:6px;line-height:1.5;">전체 백업은 식단·운동·일기·데일리와 사진까지 파일 하나로 저장해요. 새 기기나 아이콘 변경 전에 꼭 백업하세요.</div>
+  </div>
+
+  <input type="file" id="fullInput" accept="application/json,.json" style="display:none">
 </div>
 
 <!-- Calendar modal -->
@@ -597,21 +607,18 @@ function diaryTextOf(own){
   }
   return (own && own.diary) || "";
 }
-function exportDailyCsv(){
+// 날짜별 요약 (식단 총량 + 운동요약 + 체중/허리 + 매일체크 + 일기)
+function buildSummaryRows(){
   const ddb = readOther(DIET_KEY);
   const wdb = readOther(WORKOUT_KEY);
   const habits = db.habits || [];
-  // 대상 날짜 = 데일리 + 식단 + 운동에 기록이 있는 모든 날
   const dateset = {};
   Object.keys(db.days || {}).forEach(d => { dateset[d] = 1; });
   if (ddb && ddb.days) Object.keys(ddb.days).forEach(d => { dateset[d] = 1; });
   if (wdb && wdb.days) Object.keys(wdb.days).forEach(d => { dateset[d] = 1; });
   const dates = Object.keys(dateset).sort();
-  if (!dates.length){ toast("내보낼 기록이 없어요"); return; }
-
   const header = ["날짜","칼로리(kcal)","탄수화물(g)","단백질(g)","지방(g)","운동요약","체중(kg)","허리둘레(cm)"]
-    .concat(habits.map(h => h.name))
-    .concat(["일기"]);
+    .concat(habits.map(h => h.name)).concat(["일기"]);
   const rows = [header];
   dates.forEach(date => {
     const own = db.days[date] || {};
@@ -619,35 +626,118 @@ function exportDailyCsv(){
     const body = (wdb && wdb.days && wdb.days[date] && wdb.days[date].body) || {};
     const dt = dietTotalsFor(date, ddb);
     const hasDiet = !!(ddb && ddb.days && ddb.days[date]);
-    const row = [
-      date,
-      hasDiet ? round(dt.kcal) : "",
-      hasDiet ? round1(dt.carb) : "",
-      hasDiet ? round1(dt.protein) : "",
-      hasDiet ? round1(dt.fat) : "",
+    const row = [ date,
+      hasDiet ? round(dt.kcal) : "", hasDiet ? round1(dt.carb) : "",
+      hasDiet ? round1(dt.protein) : "", hasDiet ? round1(dt.fat) : "",
       workoutSummaryFor(date, wdb),
       (body.weight != null && body.weight !== "") ? body.weight : "",
-      (body.waist != null && body.waist !== "") ? body.waist : "",
-    ];
-    habits.forEach(h => {
-      const active = h.addedOn <= date && (!h.removedOn || date < h.removedOn);
-      row.push(active ? (done[h.id] ? "O" : "X") : ""); // 활성 아닌 날은 공란
-    });
+      (body.waist != null && body.waist !== "") ? body.waist : "" ];
+    habits.forEach(h => { const active = h.addedOn <= date && (!h.removedOn || date < h.removedOn); row.push(active ? (done[h.id] ? "O" : "X") : ""); });
     row.push(diaryTextOf(own));
     rows.push(row);
   });
+  return rows;
+}
+// 식단 상세 (음식별 한 줄)
+function buildDietRows(){
+  const ddb = readOther(DIET_KEY);
+  const mealTxt={breakfast:"아침",lunch:"점심",dinner:"저녁",snack:"간식"};
+  const srcTxt={ai_estimate:"AI추정",product_confirmed:"제품확인",user_manual:"직접입력"};
+  const rows=[["날짜","끼니","음식명","수량","단위","칼로리","탄수화물","단백질","지방","출처"]];
+  if(ddb && ddb.days){
+    Object.keys(ddb.days).sort().forEach(date=>{
+      const m=ddb.days[date].meals||{};
+      ["breakfast","lunch","dinner","snack"].forEach(mk=>{
+        (m[mk]||[]).forEach(it=>rows.push([date,mealTxt[mk],it.name,it.quantity,it.unit,round(it.kcal),round1(it.carb),round1(it.protein),round1(it.fat),srcTxt[it.source]||it.source||""]));
+      });
+    });
+  }
+  return rows;
+}
+// 운동 상세 (운동별 한 줄)
+function buildWorkoutRows(){
+  const wdb = readOther(WORKOUT_KEY);
+  const typeTxt={strength:"근력",cardio:"유산소",other:"기타"};
+  const rows=[["날짜","종류","운동명","무게(kg)","횟수","세트","시간(분)","거리(km)","평균페이스","평균심박수","칼로리"]];
+  if(wdb && wdb.days){
+    Object.keys(wdb.days).sort().forEach(date=>{
+      (wdb.days[date].workouts||[]).forEach(w=>rows.push([date,typeTxt[w.type]||w.type,w.name,w.weight||"",w.reps||"",w.sets||"",w.minutes?round1(w.minutes):"",w.distance||"",w.pace||"",w.hr||"",w.kcal||""]));
+    });
+  }
+  return rows;
+}
+// 일기 상세 (시간대별 기록)
+function buildDiaryRows(){
+  const rows=[["날짜","시간","내용"]];
+  Object.keys(db.days||{}).sort().forEach(date=>{
+    const own=db.days[date]||{};
+    const ents=(own.entries&&own.entries.length)?own.entries.slice().sort((a,b)=>(a.ts||0)-(b.ts||0)):(own.diary?[{time:"",text:own.diary}]:[]);
+    ents.forEach(e=>rows.push([date,e.time||"",e.text||""]));
+  });
+  return rows;
+}
+function csvFromRows(rows){
+  return rows.map(r=>r.map(c=>{ const v=String(c==null?"":c); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(",")).join("\n");
+}
+function downloadBlob(blob, fname){
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=fname;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1200);
+}
+function exportDailyCsv(){
+  const rows=buildSummaryRows();
+  if(rows.length<=1){ toast("내보낼 기록이 없어요"); return; }
+  downloadBlob(new Blob(["﻿"+csvFromRows(rows)],{type:"text/csv;charset=utf-8"}), "데일리요약_"+todayStr()+".csv");
+  toast("요약 CSV를 내려받았어요");
+}
+function exportExcel(){
+  if(typeof XLSX==="undefined"){ toast("Excel 라이브러리 로딩 중… 인터넷 연결 후 잠시 뒤 다시 눌러주세요"); return; }
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildSummaryRows()), "데일리요약");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildDietRows()), "식단상세");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildWorkoutRows()), "운동상세");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildDiaryRows()), "일기");
+  XLSX.writeFile(wb, "데일리허브_"+todayStr()+".xlsx");
+  toast("Excel 파일을 내려받았어요");
+}
 
-  const csv = rows.map(r => r.map(c => {
-    const v = String(c);
-    return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
-  }).join(",")).join("\n");
-  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "데일리기록_" + todayStr() + ".csv";
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  toast("CSV를 내려받았어요");
+/* ===== IndexedDB 사진 전체 읽기/비우기 (전체 백업용) ===== */
+async function idbAll(dbName){
+  try{ const d=await openStore(dbName); if(!d.objectStoreNames.contains("photos")) return {};
+    return await new Promise((res,rej)=>{ const tx=d.transaction("photos","readonly"); const out={}; const r=tx.objectStore("photos").openCursor(); r.onsuccess=()=>{ const c=r.result; if(c){ out[c.key]=c.value; c.continue(); } else res(out); }; r.onerror=()=>rej(r.error); });
+  }catch(e){ return {}; }
+}
+async function idbClear(dbName){
+  try{ const d=await openStore(dbName); if(!d.objectStoreNames.contains("photos")) return;
+    return await new Promise((res,rej)=>{ const tx=d.transaction("photos","readwrite"); tx.objectStore("photos").clear(); tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error); });
+  }catch(e){}
+}
+async function exportFull(){
+  toast("전체 백업 만드는 중…");
+  try{
+    const pack={ app:"daily-hub-full", version:1, exportedAt:new Date().toISOString(),
+      diet:{ data: readOther(DIET_KEY), photos: await idbAll("dietPhotos") },
+      workout:{ data: readOther(WORKOUT_KEY), photos: await idbAll("workoutPhotos") },
+      daily:{ data: (JSON.parse(localStorage.getItem(STORE_KEY))||null), photos: await idbAll("dailyPhotos") } };
+    downloadBlob(new Blob([JSON.stringify(pack)],{type:"application/json"}), "데일리허브_전체백업_"+todayStr()+".json");
+    toast("전체 백업을 저장했어요");
+  }catch(e){ toast("백업 실패"); }
+}
+function pickFull(){ const inp=document.getElementById("fullInput"); inp.value=""; inp.click(); }
+async function onFullFile(e){
+  const f=e.target.files && e.target.files[0]; if(!f) return;
+  try{
+    const obj=JSON.parse(await f.text());
+    if(!obj || obj.app!=="daily-hub-full"){ toast("올바른 전체 백업 파일이 아니에요"); e.target.value=""; return; }
+    const when=obj.exportedAt?new Date(obj.exportedAt).toLocaleString("ko-KR"):"알 수 없음";
+    if(!confirm("전체 백업으로 이 기기의 식단·운동·일기·데일리 기록을 모두 덮어씁니다.\n\n백업 시점: "+when+"\n\n계속할까요?")){ e.target.value=""; return; }
+    toast("복원 중…");
+    if(obj.diet && obj.diet.data){ localStorage.setItem(DIET_KEY, JSON.stringify(obj.diet.data)); await idbClear("dietPhotos"); const p=obj.diet.photos||{}; for(const k in p){ await idbPut("dietPhotos",k,p[k]); } }
+    if(obj.workout && obj.workout.data){ localStorage.setItem(WORKOUT_KEY, JSON.stringify(obj.workout.data)); await idbClear("workoutPhotos"); const p=obj.workout.photos||{}; for(const k in p){ await idbPut("workoutPhotos",k,p[k]); } }
+    if(obj.daily && obj.daily.data){ localStorage.setItem(STORE_KEY, JSON.stringify(obj.daily.data)); await idbClear("dailyPhotos"); const p=obj.daily.photos||{}; for(const k in p){ await idbPut("dailyPhotos",k,p[k]); } }
+    toast("복원 완료! 앱을 새로고침해요");
+    setTimeout(()=>{ try{ window.top.location.reload(); }catch(err){ location.reload(); } }, 900);
+  }catch(err){ toast("복원에 실패했어요"); }
+  e.target.value="";
 }
 
 /* ============ settings / backup ============ */
@@ -691,6 +781,10 @@ document.getElementById("calToday").onclick=()=>{ cursor=todayStr(); closeCalend
 document.getElementById("calClose").onclick=closeCalendar;
 document.getElementById("setClose").onclick=closeSettings;
 document.getElementById("dailyCsvBtn").onclick=exportDailyCsv;
+document.getElementById("excelBtn").onclick=exportExcel;
+document.getElementById("fullBackupBtn").onclick=exportFull;
+document.getElementById("fullRestoreBtn").onclick=pickFull;
+document.getElementById("fullInput").addEventListener("change", onFullFile);
 document.getElementById("backupExport").onclick=backupExport;
 document.getElementById("backupImport").onclick=backupImport;
 document.getElementById("backupInput").onchange=onBackupFile;
