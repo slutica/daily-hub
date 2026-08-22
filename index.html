@@ -763,15 +763,17 @@ const REPORT_HEAD = '<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">
  + '.day{background:#fff;border:1px solid #e8ebf0;border-radius:14px;padding:16px;margin-bottom:14px;}'
  + '.day h2{font-size:16px;margin:0 0 8px;}'
  + '.tot{font-size:14px;color:#3a3f47;margin-bottom:4px;background:#f7f8fa;border-radius:10px;padding:10px 12px;}.tot b{font-size:22px;}'
- + '.sh{font-size:13px;color:#6a6f78;margin:14px 0 4px;font-weight:700;}'
+ + '.sh{font-size:15px;color:#1c1e21;margin:18px 0 8px;font-weight:800;padding-bottom:4px;border-bottom:2px solid #eceef2;}'
+ + '.sh.cardioh{color:#5a44e0;border-bottom-color:#e4dcff;}'
  + '.mealrow{display:flex;gap:12px;align-items:flex-start;border-top:1px solid #f0f2f5;padding:10px 0;}'
- + '.mealrow .l{flex:1;min-width:0;}.mealrow .r{flex:0 0 42%;max-width:260px;}.mealrow .r img{width:100%;border-radius:10px;display:block;}'
+ + '.mealrow .l{flex:1;min-width:0;}.mealrow .r{flex:0 0 200px;max-width:200px;}.mealrow .r img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px;display:block;}'
  + '.mlabel{font-weight:700;font-size:14px;margin-bottom:4px;}'
  + '.food{display:flex;justify-content:space-between;font-size:14px;gap:8px;}.food small{color:#9aa0a8;}.food b{white-space:nowrap;}'
  + '.fmac{font-size:12px;color:#9aa0a8;margin:2px 0 6px;}'
- + '.cardio{font-size:14px;padding:3px 0;}.cardio small{color:#9aa0a8;}'
+ + '.cardiobox{background:#f2effe;border:1px solid #e4dcff;border-radius:10px;padding:12px 14px;}'
+ + '.cardio{font-size:16px;font-weight:800;color:#1c1e21;padding:3px 0;}.cardio small{color:#5a5f68;font-weight:600;font-size:14px;}'
  + '.none{color:#b3b8bf;font-size:13px;padding:4px 0;}'
- + '@media(max-width:520px){.mealrow{flex-direction:column;}.mealrow .r{max-width:100%;flex:none;}}'
+ + '@media(max-width:520px){.mealrow{flex-direction:column;}.mealrow .r{max-width:260px;flex:none;}}'
  + '</style></head><body><div class="wrapR">';
 const REPORT_FOOT = '<div style="text-align:center;color:#b3b8bf;font-size:12px;margin:16px 0;">데일리 허브에서 생성됨</div></div></body></html>';
 
@@ -805,12 +807,12 @@ async function generateShareReport(){
     // 유산소 (내용 + 사진)
     let cardioTxt = cardio.length ? cardio.map(w=>{ const p=[]; if(w.minutes)p.push(fmtDurMin(w.minutes)); if(w.distance)p.push(w.distance+"km"); if(w.pace)p.push(w.pace+"/km"); if(w.hr)p.push("♥"+w.hr); if(w.kcal)p.push(w.kcal+"kcal"); return '<div class="cardio">🏃 '+esc(w.name)+' <small>'+esc(p.join(" · "))+'</small></div>'; }).join("") : '<div class="none">유산소 기록 없음</div>';
     let woPhoto=null; const wids=(wd&&wd.photos)||[]; if(wids.length){ try{ woPhoto=await idbGet("workoutPhotos", wids[0]); }catch(e){} }
-    let cardioHtml = '<div class="mealrow"><div class="l">'+cardioTxt+'</div>'+(woPhoto?'<div class="r"><img src="'+woPhoto+'"></div>':'')+'</div>';
+    let cardioHtml = '<div class="mealrow"><div class="l"><div class="cardiobox">'+cardioTxt+'</div></div>'+(woPhoto?'<div class="r"><img src="'+woPhoto+'"></div>':'')+'</div>';
 
     body += '<section class="day"><h2>'+date+' ('+wk+')</h2>'
       + '<div class="tot"><b>'+round(t.kcal)+'</b> kcal · 탄 '+round(t.carb)+'g · 단 '+round(t.protein)+'g · 지 '+round(t.fat)+'g</div>'
       + '<div class="sh">🥗 식단</div>'+(mealsHtml||'<div class="none">식단 기록 없음</div>')
-      + '<div class="sh">🏃 유산소</div>'+cardioHtml
+      + '<div class="sh cardioh">🏃 유산소</div>'+cardioHtml
       + '</section>';
   }
   const html = REPORT_HEAD + '<h1>운동·식단 리포트</h1><div class="range">'+start+' ~ '+end+'</div>' + body + REPORT_FOOT;
