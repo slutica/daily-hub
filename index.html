@@ -148,6 +148,8 @@
   .ph-row{ display:flex; flex-wrap:wrap; gap:8px; }
   .ph-thumb{ width:72px; height:72px; border-radius:10px; object-fit:cover; cursor:pointer; border:1px solid #e2e5ea; }
   .ph-add{ width:72px; height:72px; border-radius:10px; border:1px dashed #cfd4da; background:#f7f8fa; font-size:22px; color:#9aa0a8; cursor:pointer; }
+  .csvbtn{ width:100%; background:#fff; border:1px solid #d7dbe0; border-radius:12px; padding:13px; font-size:14px; font-weight:600; color:#3a3f47; cursor:pointer; margin-bottom:12px; }
+  .csvbtn:active{ background:#f2f4f7; }
 
   /* calendar / modal */
   .backdrop{ position:fixed; inset:0; background:rgba(20,22,26,.42); display:none; align-items:flex-end; justify-content:center; z-index:50; }
@@ -231,6 +233,8 @@
     <div class="chead"><span class="ctitle">📷 오늘의 사진</span></div>
     <div class="ph-row" id="myPhotos"></div>
   </div>
+
+  <button class="csvbtn" id="dailyCsvBtn">⬇ CSV 내보내기 (식단·운동·데일리 통합)</button>
 </div>
 
 <!-- Calendar modal -->
@@ -557,6 +561,87 @@ function renderCalendar(){
   }
 }
 
+/* ============ CSV export (식단·운동·데일리 통합, 날짜별 1줄) ============ */
+function dietTotalsFor(date, ddb){
+  const t={kcal:0,carb:0,protein:0,fat:0};
+  const day = ddb && ddb.days && ddb.days[date];
+  if(!day || !day.meals) return t;
+  Object.values(day.meals).forEach(list => (list||[]).forEach(it => {
+    t.kcal+=it.kcal||0; t.carb+=it.carb||0; t.protein+=it.protein||0; t.fat+=it.fat||0;
+  }));
+  return t;
+}
+function fmtDurMin(M){ M=Number(M)||0; if(!M) return ""; let mm=Math.floor(M); let s=Math.round((M-mm)*60); if(s===60){mm++;s=0;} return s?(mm+"분 "+s+"초"):(mm+"분"); }
+function workoutSummaryFor(date, wdb){
+  const day = wdb && wdb.days && wdb.days[date];
+  const list = (day && day.workouts) || [];
+  if(!list.length) return "";
+  let sc=0,cc=0,cm=0,sm=0,kc=0; const others={};
+  list.forEach(w => { const mn=Number(w.minutes)||0;
+    if(w.type==="cardio"){ cc++; cm+=mn; kc+=Number(w.kcal)||0; }
+    else if(w.type==="other"){ const k=w.name||"기타"; others[k]=(others[k]||0)+mn; }
+    else { sc++; sm+=mn; } });
+  const parts=[];
+  if(sc) parts.push(sm ? ("근력 "+fmtDurMin(sm)) : ("근력 "+sc+"종"));
+  if(cc) parts.push(cm ? ("유산소 "+fmtDurMin(cm)) : ("유산소 "+cc+"종"));
+  Object.keys(others).forEach(k => parts.push(others[k] ? (k+" "+fmtDurMin(others[k])) : k));
+  let t = parts.join(" · ");
+  if(kc) t += " · "+kc+"kcal";
+  return t;
+}
+function exportDailyCsv(){
+  const ddb = readOther(DIET_KEY);
+  const wdb = readOther(WORKOUT_KEY);
+  const habits = db.habits || [];
+  // 대상 날짜 = 데일리 + 식단 + 운동에 기록이 있는 모든 날
+  const dateset = {};
+  Object.keys(db.days || {}).forEach(d => { dateset[d] = 1; });
+  if (ddb && ddb.days) Object.keys(ddb.days).forEach(d => { dateset[d] = 1; });
+  if (wdb && wdb.days) Object.keys(wdb.days).forEach(d => { dateset[d] = 1; });
+  const dates = Object.keys(dateset).sort();
+  if (!dates.length){ toast("내보낼 기록이 없어요"); return; }
+
+  const header = ["날짜","칼로리(kcal)","탄수화물(g)","단백질(g)","지방(g)","운동요약","체중(kg)","허리둘레(cm)"]
+    .concat(habits.map(h => h.name))
+    .concat(["일기"]);
+  const rows = [header];
+  dates.forEach(date => {
+    const own = db.days[date] || {};
+    const done = own.habitDone || {};
+    const body = (wdb && wdb.days && wdb.days[date] && wdb.days[date].body) || {};
+    const dt = dietTotalsFor(date, ddb);
+    const hasDiet = !!(ddb && ddb.days && ddb.days[date]);
+    const row = [
+      date,
+      hasDiet ? round(dt.kcal) : "",
+      hasDiet ? round1(dt.carb) : "",
+      hasDiet ? round1(dt.protein) : "",
+      hasDiet ? round1(dt.fat) : "",
+      workoutSummaryFor(date, wdb),
+      (body.weight != null && body.weight !== "") ? body.weight : "",
+      (body.waist != null && body.waist !== "") ? body.waist : "",
+    ];
+    habits.forEach(h => {
+      const active = h.addedOn <= date && (!h.removedOn || date < h.removedOn);
+      row.push(active ? (done[h.id] ? "O" : "X") : ""); // 활성 아닌 날은 공란
+    });
+    row.push(own.diary || "");
+    rows.push(row);
+  });
+
+  const csv = rows.map(r => r.map(c => {
+    const v = String(c);
+    return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  }).join(",")).join("\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "데일리기록_" + todayStr() + ".csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast("CSV를 내려받았어요");
+}
+
 /* ============ settings / backup ============ */
 function openSettings(){ document.getElementById("setBackdrop").classList.add("on"); }
 function closeSettings(){ document.getElementById("setBackdrop").classList.remove("on"); }
@@ -597,6 +682,7 @@ document.getElementById("calNext").onclick=()=>{ calMonth.setMonth(calMonth.getM
 document.getElementById("calToday").onclick=()=>{ cursor=todayStr(); closeCalendar(); render(); };
 document.getElementById("calClose").onclick=closeCalendar;
 document.getElementById("setClose").onclick=closeSettings;
+document.getElementById("dailyCsvBtn").onclick=exportDailyCsv;
 document.getElementById("backupExport").onclick=backupExport;
 document.getElementById("backupImport").onclick=backupImport;
 document.getElementById("backupInput").onchange=onBackupFile;
