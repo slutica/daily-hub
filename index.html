@@ -902,7 +902,7 @@ render();
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>일기</title>
+<title>일기 · 일정</title>
 <style>
   :root{ color-scheme: light; }
   *{ box-sizing:border-box; }
@@ -910,39 +910,52 @@ render();
   input, textarea, select, button{ font-size:16px; }
   .wrap{ max-width:520px; margin:0 auto; padding:calc(16px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(60px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left)); }
 
-  .datebar{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:14px; }
-  .datebar .nav{ background:#fff; border:1px solid #e2e5ea; border-radius:10px; width:38px; height:38px; font-size:18px; cursor:pointer; }
-  .datebar .today{ text-align:center; cursor:pointer; padding:2px 6px; border-radius:10px; flex:1; }
-  .datebar .today:active{ background:#eceef2; }
-  .datebar .today .d{ font-size:17px; font-weight:700; }
-  .datebar .today .caret{ font-size:11px; color:#b3b8bf; }
-  .datebar .today .sub{ font-size:12px; color:#8a8f98; }
-
   .card{ background:#fff; border:1px solid #e8ebf0; border-radius:16px; padding:15px; margin-bottom:12px; box-shadow:0 1px 2px rgba(0,0,0,.03); }
-  .card .ctitle{ font-size:14px; font-weight:700; display:flex; align-items:center; gap:7px; margin-bottom:10px; }
+  .ctitle{ font-size:14px; font-weight:700; display:flex; align-items:center; gap:7px; margin-bottom:10px; }
+
+  /* calendar */
+  .calhead{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .caltitle{ font-size:16px; font-weight:800; }
+  .nav{ background:#f2f4f7; border:1px solid #e2e5ea; border-radius:10px; width:36px; height:36px; font-size:18px; cursor:pointer; }
+  .calgrid{ display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .caldow span{ text-align:center; font-size:11px; color:#8a8f98; padding:2px 0; display:block; }
+  .calcell{ aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; border-radius:10px; font-size:14px; cursor:pointer; position:relative; color:#1c1e21; }
+  .calcell.empty{ cursor:default; }
+  .calcell.today{ border:1.5px solid #6d5efc; }
+  .calcell.sel{ background:#6d5efc; color:#fff; font-weight:700; }
+  .calcell .dot{ width:5px; height:5px; border-radius:50%; background:#6d5efc; position:absolute; bottom:5px; left:50%; transform:translateX(-50%); }
+  .calcell.sel .dot{ background:#fff; }
+  .caltoday{ text-align:center; margin-top:8px; }
+  .caltoday button{ background:none; border:none; color:#6d5efc; font-size:13px; font-weight:600; cursor:pointer; }
+
+  .seldate{ font-size:16px; font-weight:800; margin:2px 0 12px; }
+
+  /* goals / d-day */
+  .goal{ display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid #f0f2f5; }
+  .goal:first-child{ border-top:none; }
+  .goal .dday{ flex:0 0 auto; background:#efeaff; color:#5a44e0; font-weight:800; font-size:13px; border-radius:8px; padding:5px 9px; min-width:52px; text-align:center; }
+  .goal .dday.over{ background:#f0f2f5; color:#9aa0a8; }
+  .goal .gname{ flex:1; font-size:14px; font-weight:600; word-break:break-word; }
+  .goal .gdate{ font-size:12px; color:#9aa0a8; }
+  .goal .del{ background:none; border:none; color:#c4c8ce; font-size:16px; cursor:pointer; }
+  .empty{ color:#b3b8bf; font-size:13px; padding:2px 0 4px; }
+
+  .addrow{ display:flex; gap:8px; margin-top:10px; }
+  .addrow input[type=text]{ flex:1; min-width:0; border:1px solid #d7dbe0; border-radius:10px; padding:10px 12px; font-size:15px; }
+  .addrow input[type=date], .addrow input[type=time]{ border:1px solid #d7dbe0; border-radius:10px; padding:9px; font-size:15px; }
+  .addrow button{ flex:0 0 auto; background:#1c1e21; color:#fff; border:none; border-radius:10px; padding:0 15px; font-size:14px; font-weight:700; cursor:pointer; }
 
   /* schedule */
-  .ev{ display:flex; gap:10px; padding:8px 0; border-top:1px solid #f0f2f5; }
-  .ev:first-child{ border-top:none; }
-  .ev .t{ flex:0 0 auto; width:52px; font-size:13px; font-weight:700; color:#6d5efc; }
-  .ev .t.allday{ color:#8a8f98; font-weight:600; }
-  .ev .nm{ flex:1; font-size:14px; color:#2c2c2a; word-break:break-word; }
-  .schmsg{ color:#b3b8bf; font-size:13px; padding:4px 0; }
-  .refresh{ background:#f2f4f7; border:1px solid #e2e5ea; border-radius:99px; padding:4px 10px; font-size:12px; font-weight:600; color:#5a5f68; cursor:pointer; margin-left:auto; }
+  .sch{ display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid #f0f2f5; }
+  .sch:first-child{ border-top:none; }
+  .sch .tm{ flex:0 0 auto; font-size:13px; font-weight:800; color:#6d5efc; min-width:46px; }
+  .sch .tx{ flex:1; font-size:14px; color:#2c2c2a; word-break:break-word; }
+  .sch .del{ background:none; border:none; color:#c4c8ce; font-size:16px; cursor:pointer; }
+  .sch.done .tx{ color:#b3b8bf; text-decoration:line-through; }
+  .sch .chk{ flex:0 0 auto; width:20px; height:20px; border-radius:6px; border:1.6px solid #cfd4da; background:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:12px; color:#fff; }
+  .sch .chk.on{ background:#6d5efc; border-color:#6d5efc; }
 
-  /* diary */
-  .diary-write{ width:100%; background:#fff; border:1px dashed #cfd4da; border-radius:16px; padding:16px; font-size:14px; font-weight:600; color:#5a5f68; cursor:pointer; }
-  .diary-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
-  .diary-btns button{ background:none; border:none; font-size:13px; color:#8a8f98; cursor:pointer; padding:4px 6px; }
-  .diary-btns button.del{ color:#d64545; }
-  .diary-text{ font-size:15px; color:#2c2c2a; line-height:1.7; white-space:pre-wrap; word-break:break-word; }
-  .diary textarea{ width:100%; border:1px solid #d7dbe0; border-radius:12px; padding:12px; font-size:15px; font-family:inherit; resize:vertical; min-height:180px; }
-  .diary-actions{ display:flex; gap:10px; margin-top:10px; }
-  .diary-actions button{ flex:1; border:none; border-radius:12px; padding:12px; font-size:14px; font-weight:700; cursor:pointer; }
-  .diary-actions .cancel{ background:#eef0f3; color:#3a3f47; }
-  .diary-actions .save{ background:#6d5efc; color:#fff; }
-
-  /* timeline entries */
+  /* diary entries */
   .entry{ padding:12px 0; border-top:1px solid #f0f2f5; }
   .entry:first-child{ border-top:none; }
   .ehead{ display:flex; align-items:center; justify-content:space-between; margin-bottom:5px; }
@@ -951,28 +964,24 @@ render();
   .ebtns button.del{ color:#d64545; }
   .etext{ font-size:15px; color:#2c2c2a; line-height:1.65; white-space:pre-wrap; word-break:break-word; }
   .entry .eedit{ width:100%; border:1px solid #d7dbe0; border-radius:12px; padding:11px; font-size:15px; font-family:inherit; resize:vertical; min-height:90px; }
+  .diary-actions{ display:flex; gap:10px; margin-top:10px; }
+  .diary-actions button{ flex:1; border:none; border-radius:12px; padding:11px; font-size:14px; font-weight:700; cursor:pointer; }
+  .diary-actions .cancel{ background:#eef0f3; color:#3a3f47; }
+  .diary-actions .save{ background:#6d5efc; color:#fff; }
   .entry-add{ margin-top:12px; padding-top:12px; border-top:1px dashed #e2e5ea; }
   .entry-add textarea{ width:100%; border:1px solid #d7dbe0; border-radius:12px; padding:12px; font-size:15px; font-family:inherit; resize:vertical; min-height:80px; }
   .entry-add button{ width:100%; margin-top:8px; background:#6d5efc; color:#fff; border:none; border-radius:12px; padding:12px; font-size:15px; font-weight:700; cursor:pointer; }
 
-  /* calendar modal */
+  .addbtn2{ width:100%; background:#fff; border:1px dashed #cfd4da; border-radius:12px; padding:12px; font-size:14px; font-weight:700; color:#5a5f68; cursor:pointer; }
+  .addbtn2:active{ background:#f6f7f9; }
   .backdrop{ position:fixed; inset:0; background:rgba(20,22,26,.42); display:none; align-items:flex-end; justify-content:center; z-index:50; }
   .backdrop.on{ display:flex; }
-  .sheet{ background:#fff; width:100%; max-width:520px; border-radius:20px 20px 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom)); max-height:88vh; overflow:auto; }
+  .sheet{ background:#fff; width:100%; max-width:520px; border-radius:20px 20px 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom)); }
   @media(min-width:560px){ .backdrop{ align-items:center; } .sheet{ border-radius:20px; } }
-  .calhead{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
-  .caltitle{ font-size:16px; font-weight:700; }
-  .calgrid{ display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
-  .caldow{ margin-bottom:6px; }
-  .caldow span{ text-align:center; font-size:11px; color:#8a8f98; padding:2px 0; }
-  .calcell{ aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; border-radius:10px; font-size:14px; cursor:pointer; position:relative; color:#1c1e21; }
-  .calcell.empty{ cursor:default; }
-  .calcell.today{ border:1.5px solid #6d5efc; }
-  .calcell.sel{ background:#1c1e21; color:#fff; }
-  .calcell .dot{ width:5px; height:5px; border-radius:50%; background:#6d5efc; position:absolute; bottom:5px; left:50%; transform:translateX(-50%); }
-  .calcell.sel .dot{ background:#fff; }
-  .nav{ background:#fff; border:1px solid #e2e5ea; border-radius:10px; width:38px; height:38px; font-size:18px; cursor:pointer; }
-  .actions{ display:flex; gap:10px; margin-top:16px; }
+  .sheet h3{ margin:2px 0 12px; font-size:17px; }
+  .sheet label{ display:block; font-size:12px; color:#8a8f98; font-weight:600; margin:10px 2px 6px; }
+  .sheet input{ width:100%; border:1px solid #d7dbe0; border-radius:12px; padding:12px; font-size:16px; }
+  .sheet .actions{ display:flex; gap:10px; margin-top:16px; }
   .btn{ flex:1; border:none; border-radius:12px; padding:13px; font-size:15px; font-weight:700; cursor:pointer; }
   .btn.primary{ background:#6d5efc; color:#fff; }
   .btn.ghost{ background:#eef0f3; color:#3a3f47; }
@@ -983,22 +992,37 @@ render();
 </head>
 <body>
 <div class="wrap">
-  <div class="datebar">
-    <button class="nav" id="prevDay">‹</button>
-    <div class="today" id="dateBtn">
-      <div class="d"><span id="dLabel">오늘</span> <span class="caret">▾</span></div>
-      <div class="sub" id="dSub"></div>
+  <!-- 캘린더 -->
+  <div class="card">
+    <div class="calhead">
+      <button class="nav" id="calPrev">‹</button>
+      <div class="caltitle" id="calTitle"></div>
+      <button class="nav" id="calNext">›</button>
     </div>
-    <button class="nav" id="nextDay">›</button>
+    <div class="calgrid caldow" id="calDow"></div>
+    <div class="calgrid" id="calDays"></div>
+    <div class="caltoday"><button id="calToday">오늘로</button></div>
   </div>
 
+  <div class="seldate" id="selDate"></div>
+
+  <!-- 목표 / D-day -->
   <div class="card">
-    <div class="ctitle">📅 오늘 일정 <button class="refresh" id="calRefresh">새로고침</button></div>
-    <div id="schedule"></div>
+    <div class="ctitle">🎯 목표 · D-day</div>
+    <div id="goalList"></div>
+    <button class="addbtn2" id="goalAddOpen">＋ 목표 추가</button>
   </div>
 
+  <!-- 시간별 일정 -->
   <div class="card">
-    <div class="ctitle">📔 오늘의 일기 <span style="font-weight:400;color:#8a8f98;font-size:12px;">(작성 시각별로 기록)</span></div>
+    <div class="ctitle" id="schTitle">🕐 일정</div>
+    <div id="schList"></div>
+    <button class="addbtn2" id="schAddOpen">＋ 일정 추가</button>
+  </div>
+
+  <!-- 일기 -->
+  <div class="card">
+    <div class="ctitle">📔 일기 <span style="font-weight:400;color:#8a8f98;font-size:12px;">(작성 시각별로 기록)</span></div>
     <div id="entriesBox"></div>
     <div class="entry-add">
       <textarea id="entryInput" placeholder="지금 이 순간의 기록을 남겨보세요…"></textarea>
@@ -1007,20 +1031,27 @@ render();
   </div>
 </div>
 
-<!-- Calendar modal -->
-<div class="backdrop" id="calBackdrop">
+<!-- 목표 추가 시트 -->
+<div class="backdrop" id="goalBackdrop">
   <div class="sheet">
-    <div class="calhead">
-      <button class="nav" id="calPrev">‹</button>
-      <div class="caltitle" id="calTitle"></div>
-      <button class="nav" id="calNext">›</button>
-    </div>
-    <div class="calgrid caldow" id="calDow"></div>
-    <div class="calgrid" id="calDays"></div>
-    <div class="actions">
-      <button class="btn ghost" id="calToday">오늘로</button>
-      <button class="btn primary" id="calClose">닫기</button>
-    </div>
+    <h3>🎯 목표 추가</h3>
+    <label>목표 내용</label>
+    <input type="text" id="goalName" placeholder="예: 바디프로필 · 대회 · 여행" autocomplete="off">
+    <label>목표 날짜 (D-day)</label>
+    <input type="date" id="goalDate">
+    <div class="actions"><button class="btn ghost" id="goalCancel">취소</button><button class="btn primary" id="goalSave">저장</button></div>
+  </div>
+</div>
+
+<!-- 일정 추가 시트 -->
+<div class="backdrop" id="schBackdrop">
+  <div class="sheet">
+    <h3 id="schSheetTitle">🕐 일정 추가</h3>
+    <label>시간</label>
+    <input type="time" id="schTime">
+    <label>내용</label>
+    <input type="text" id="schText" placeholder="일정 내용" autocomplete="off">
+    <div class="actions"><button class="btn ghost" id="schCancel">취소</button><button class="btn primary" id="schSave">저장</button></div>
   </div>
 </div>
 
@@ -1028,108 +1059,33 @@ render();
 
 <script>
 const STORE_KEY="dailyLog.v1";
-const CAL_PROXY="https://solar.slutica.workers.dev";
 let db=load();
+if(!Array.isArray(db.goals)) db.goals=[];
 let cursor=todayStr();
-let editingId=null;
 let calMonth=null;
-const evCache={}; // date -> events (그날 캐시)
+let editingId=null;
 
 function load(){ try{ return JSON.parse(localStorage.getItem(STORE_KEY))||fresh(); }catch(e){ return fresh(); } }
-function fresh(){ return { days:{} }; }
+function fresh(){ return { days:{}, goals:[] }; }
 function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(db)); }
 function todayStr(){ return fmt(new Date()); }
 function fmt(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function parseD(s){ const [y,m,dd]=s.split("-").map(Number); return new Date(y,m-1,dd); }
-function shiftDay(n){ const d=parseD(cursor); d.setDate(d.getDate()+n); cursor=fmt(d); render(); }
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
-function genId(){ return "e_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function genId(){ return "x_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function wkOf(ds){ return ["일","월","화","수","목","금","토"][parseD(ds).getDay()]; }
+
 function dayData(date){
   if(!db.days[date]) db.days[date]={};
   const d=db.days[date];
   if(!Array.isArray(d.entries)) d.entries=[];
-  // 예전 단일 일기(diary 문자열)를 시간 없는 기록 1개로 이관
+  if(!Array.isArray(d.schedule)) d.schedule=[];
   if(d.diary && d.diary.trim()){ d.entries.push({ id:genId(), time:"", text:d.diary, ts:1 }); delete d.diary; save(); }
   return d;
 }
+function dayHasStuff(ds){ const d=db.days[ds]; return !!d && ((d.schedule&&d.schedule.length)||(d.entries&&d.entries.length)||(d.diary&&String(d.diary).trim())); }
 
-/* ---------- schedule (구글 캘린더) ---------- */
-async function loadSchedule(force){
-  const box=document.getElementById("schedule");
-  const date=cursor;
-  if(!force && evCache[date]){ renderSchedule(evCache[date]); return; }
-  box.innerHTML='<div class="schmsg">일정 불러오는 중…</div>';
-  try{
-    const r=await fetch(CAL_PROXY,{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"calendar", date:date}) });
-    const d=await r.json();
-    if(d.error){
-      if(d.error==="no calendar url") box.innerHTML='<div class="schmsg">캘린더가 아직 연결되지 않았어요. (Worker에 GCAL_ICS_URL 설정 필요)</div>';
-      else box.innerHTML='<div class="schmsg">일정을 불러오지 못했어요: '+esc(d.error)+'</div>';
-      return;
-    }
-    const evs=d.events||[];
-    if(date===cursor){ evCache[date]=evs; renderSchedule(evs); }
-  }catch(e){
-    box.innerHTML='<div class="schmsg">네트워크 오류로 일정을 못 불러왔어요.</div>';
-  }
-}
-function renderSchedule(evs){
-  const box=document.getElementById("schedule");
-  if(!evs.length){ box.innerHTML='<div class="schmsg">이 날 일정이 없어요.</div>'; return; }
-  box.innerHTML=evs.map(e=>`<div class="ev"><div class="t${e.allDay?" allday":""}">${e.allDay?"종일":esc(e.time||"")}</div><div class="nm">${esc(e.title||"")}</div></div>`).join("");
-}
-
-/* ---------- diary: 시간대별 기록 ---------- */
-function renderEntries(){
-  const box=document.getElementById("entriesBox");
-  const list=dayData(cursor).entries.slice().sort((a,b)=>(a.ts||0)-(b.ts||0));
-  if(!list.length){ box.innerHTML='<div class="schmsg">아직 기록이 없어요. 아래에 작성해 보세요.</div>'; return; }
-  let h="";
-  list.forEach(e=>{
-    if(editingId===e.id){
-      h+=`<div class="entry" data-id="${e.id}">
-        <div class="ehead"><span class="etime">🕐 ${esc(e.time||"시간 없음")}</span></div>
-        <textarea class="eedit">${esc(e.text)}</textarea>
-        <div class="diary-actions"><button class="cancel" data-act="cancel">취소</button><button class="save" data-act="save">저장</button></div>
-      </div>`;
-    } else {
-      h+=`<div class="entry" data-id="${e.id}">
-        <div class="ehead"><span class="etime">🕐 ${esc(e.time||"시간 없음")}</span>
-          <span class="ebtns"><button data-act="edit">수정</button><button class="del" data-act="del">삭제</button></span></div>
-        <div class="etext">${esc(e.text)}</div>
-      </div>`;
-    }
-  });
-  box.innerHTML=h;
-  box.querySelectorAll(".entry").forEach(el=>{
-    const id=el.dataset.id;
-    el.querySelectorAll("[data-act]").forEach(btn=>{
-      btn.onclick=()=>{
-        const act=btn.dataset.act;
-        const arr=dayData(cursor).entries;
-        if(act==="edit"){ editingId=id; renderEntries(); }
-        else if(act==="cancel"){ editingId=null; renderEntries(); }
-        else if(act==="del"){ if(!confirm("이 기록을 삭제할까요?")) return; const i=arr.findIndex(x=>x.id===id); if(i>=0) arr.splice(i,1); save(); renderEntries(); toast("삭제했어요"); }
-        else if(act==="save"){ const ta=el.querySelector(".eedit"); const v=ta.value.trim(); const it=arr.find(x=>x.id===id);
-          if(it){ if(v) it.text=v; else { const i=arr.indexOf(it); arr.splice(i,1); } }
-          editingId=null; save(); renderEntries(); toast(v?"수정했어요":"삭제했어요"); }
-      };
-    });
-    const ta=el.querySelector(".eedit"); if(ta) setTimeout(()=>ta.focus(),30);
-  });
-}
-function addEntry(){
-  const ta=document.getElementById("entryInput"); const v=ta.value.trim(); if(!v) return;
-  const now=new Date();
-  const time=String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
-  dayData(cursor).entries.push({ id:genId(), time:time, text:v, ts:Date.now() });
-  save(); ta.value=""; editingId=null; renderEntries(); toast("기록을 추가했어요");
-}
-
-/* ---------- calendar modal ---------- */
-function dayHasDiary(ds){ const d=db.days[ds]; return !!d && ((d.entries&&d.entries.length)||(d.diary&&d.diary.trim())); }
-function openCalendar(){ const d=parseD(cursor); calMonth=new Date(d.getFullYear(),d.getMonth(),1); renderCalendar(); document.getElementById("calBackdrop").classList.add("on"); }
-function closeCalendar(){ document.getElementById("calBackdrop").classList.remove("on"); }
+/* ---------- 캘린더 ---------- */
 function renderCalendar(){
   const y=calMonth.getFullYear(), m=calMonth.getMonth();
   document.getElementById("calTitle").textContent=`${y}년 ${m+1}월`;
@@ -1137,39 +1093,146 @@ function renderCalendar(){
   const days=document.getElementById("calDays"); days.innerHTML="";
   const startDow=new Date(y,m,1).getDay(), n=new Date(y,m+1,0).getDate();
   for(let i=0;i<startDow;i++){ const c=document.createElement("div"); c.className="calcell empty"; days.appendChild(c); }
-  for(let dd=1;dd<=n;dd++){ const ds=`${y}-${String(m+1).padStart(2,"0")}-${String(dd).padStart(2,"0")}`;
+  for(let dd=1;dd<=n;dd++){
+    const ds=`${y}-${String(m+1).padStart(2,"0")}-${String(dd).padStart(2,"0")}`;
     const c=document.createElement("div"); c.className="calcell";
     if(ds===cursor) c.classList.add("sel"); else if(ds===todayStr()) c.classList.add("today");
-    c.innerHTML=`<span>${dd}</span>`+(dayHasDiary(ds)?`<span class="dot"></span>`:"");
-    c.onclick=()=>{ cursor=ds; closeCalendar(); render(); };
+    c.innerHTML=`<span>${dd}</span>`+(dayHasStuff(ds)?`<span class="dot"></span>`:"");
+    c.onclick=()=>{ cursor=ds; renderAll(); };
     days.appendChild(c);
   }
 }
 
-/* ---------- render ---------- */
-function render(){
-  const d=parseD(cursor); const wk=["일","월","화","수","목","금","토"][d.getDay()];
-  document.getElementById("dLabel").textContent = cursor===todayStr()?"오늘":`${d.getMonth()+1}월 ${d.getDate()}일`;
-  document.getElementById("dSub").textContent = `${cursor} (${wk})`;
-  editingId=null; renderEntries();
-  loadSchedule(false);
+/* ---------- 목표 / D-day ---------- */
+function ddayLabel(target){
+  const diff=Math.round((parseD(target)-parseD(todayStr()))/86400000);
+  if(diff>0) return {t:"D-"+diff, over:false};
+  if(diff===0) return {t:"D-DAY", over:false};
+  return {t:"D+"+(-diff), over:true};
+}
+function renderGoals(){
+  const box=document.getElementById("goalList");
+  const list=(db.goals||[]).slice().sort((a,b)=>String(a.targetDate).localeCompare(String(b.targetDate)));
+  if(!list.length){ box.innerHTML=`<div class="empty">목표를 추가하면 D-day가 표시돼요.</div>`; return; }
+  box.innerHTML="";
+  list.forEach(g=>{
+    const dl=ddayLabel(g.targetDate);
+    const row=document.createElement("div"); row.className="goal";
+    row.innerHTML=`<span class="dday${dl.over?" over":""}">${dl.t}</span>
+      <span class="gname">${esc(g.name)}<div class="gdate">${esc(g.targetDate)} (${wkOf(g.targetDate)})</div></span>
+      <button class="del">×</button>`;
+    row.querySelector(".del").onclick=()=>{ if(!confirm(`목표 '${g.name}'를 삭제할까요?`)) return; db.goals=db.goals.filter(x=>x.id!==g.id); save(); renderGoals(); };
+    box.appendChild(row);
+  });
+}
+function addGoal(){
+  const name=document.getElementById("goalName").value.trim();
+  const date=document.getElementById("goalDate").value;
+  if(!name){ toast("목표 내용을 입력하세요"); return; }
+  if(!date){ toast("목표 날짜를 선택하세요"); return; }
+  db.goals.push({ id:genId(), name:name, targetDate:date });
+  save(); renderGoals(); closeGoalSheet();
+  toast("목표를 추가했어요");
+}
+function openGoalSheet(){ document.getElementById("goalName").value=""; document.getElementById("goalDate").value=""; document.getElementById("goalBackdrop").classList.add("on"); setTimeout(()=>document.getElementById("goalName").focus(),80); }
+function closeGoalSheet(){ document.getElementById("goalBackdrop").classList.remove("on"); }
+
+/* ---------- 시간별 일정 ---------- */
+function renderSchedule(){
+  document.getElementById("schTitle").textContent="🕐 "+(cursor===todayStr()?"오늘":`${parseD(cursor).getMonth()+1}월 ${parseD(cursor).getDate()}일`)+" 일정";
+  const box=document.getElementById("schList");
+  const list=dayData(cursor).schedule.slice().sort((a,b)=>String(a.time).localeCompare(String(b.time)));
+  if(!list.length){ box.innerHTML=`<div class="empty">이 날 일정이 없어요. 아래에서 추가하세요.</div>`; return; }
+  box.innerHTML="";
+  list.forEach(s=>{
+    const row=document.createElement("div"); row.className="sch"+(s.done?" done":"");
+    row.innerHTML=`<div class="chk${s.done?" on":""}">${s.done?"✓":""}</div><div class="tm">${esc(s.time||"")}</div><div class="tx">${esc(s.text)}</div><button class="del">×</button>`;
+    row.querySelector(".chk").onclick=()=>{ s.done=!s.done; save(); renderSchedule(); };
+    row.querySelector(".del").onclick=()=>{ const arr=dayData(cursor).schedule; const i=arr.findIndex(x=>x.id===s.id); if(i>=0) arr.splice(i,1); save(); renderCalendar(); renderSchedule(); };
+    box.appendChild(row);
+  });
+}
+function addSchedule(){
+  const time=document.getElementById("schTime").value;
+  const text=document.getElementById("schText").value.trim();
+  if(!text){ toast("일정 내용을 입력하세요"); return; }
+  dayData(cursor).schedule.push({ id:genId(), time:time||"", text:text, done:false });
+  save(); renderCalendar(); renderSchedule(); closeSchSheet();
+  toast("일정을 추가했어요");
+}
+function openSchSheet(){
+  document.getElementById("schTime").value=""; document.getElementById("schText").value="";
+  document.getElementById("schSheetTitle").textContent="🕐 "+(cursor===todayStr()?"오늘":`${parseD(cursor).getMonth()+1}월 ${parseD(cursor).getDate()}일`)+" 일정 추가";
+  document.getElementById("schBackdrop").classList.add("on"); setTimeout(()=>document.getElementById("schText").focus(),80);
+}
+function closeSchSheet(){ document.getElementById("schBackdrop").classList.remove("on"); }
+
+/* ---------- 일기 (시간대별) ---------- */
+function renderEntries(){
+  const box=document.getElementById("entriesBox");
+  const list=dayData(cursor).entries.slice().sort((a,b)=>(a.ts||0)-(b.ts||0));
+  if(!list.length){ box.innerHTML='<div class="empty">아직 기록이 없어요. 아래에 작성해 보세요.</div>'; return; }
+  let h="";
+  list.forEach(e=>{
+    if(editingId===e.id){
+      h+=`<div class="entry" data-id="${e.id}"><div class="ehead"><span class="etime">🕐 ${esc(e.time||"시간 없음")}</span></div>
+        <textarea class="eedit">${esc(e.text)}</textarea>
+        <div class="diary-actions"><button class="cancel" data-act="cancel">취소</button><button class="save" data-act="save">저장</button></div></div>`;
+    } else {
+      h+=`<div class="entry" data-id="${e.id}"><div class="ehead"><span class="etime">🕐 ${esc(e.time||"시간 없음")}</span>
+        <span class="ebtns"><button data-act="edit">수정</button><button class="del" data-act="del">삭제</button></span></div>
+        <div class="etext">${esc(e.text)}</div></div>`;
+    }
+  });
+  box.innerHTML=h;
+  box.querySelectorAll(".entry").forEach(el=>{
+    const id=el.dataset.id;
+    el.querySelectorAll("[data-act]").forEach(btn=>{
+      btn.onclick=()=>{
+        const act=btn.dataset.act; const arr=dayData(cursor).entries;
+        if(act==="edit"){ editingId=id; renderEntries(); }
+        else if(act==="cancel"){ editingId=null; renderEntries(); }
+        else if(act==="del"){ if(!confirm("이 기록을 삭제할까요?")) return; const i=arr.findIndex(x=>x.id===id); if(i>=0) arr.splice(i,1); save(); renderCalendar(); renderEntries(); }
+        else if(act==="save"){ const ta=el.querySelector(".eedit"); const v=ta.value.trim(); const it=arr.find(x=>x.id===id);
+          if(it){ if(v) it.text=v; else { const i=arr.indexOf(it); arr.splice(i,1); } } editingId=null; save(); renderCalendar(); renderEntries(); toast(v?"수정했어요":"삭제했어요"); }
+      };
+    });
+    const ta=el.querySelector(".eedit"); if(ta) setTimeout(()=>ta.focus(),30);
+  });
+}
+function addEntry(){
+  const ta=document.getElementById("entryInput"); const v=ta.value.trim(); if(!v) return;
+  const now=new Date(); const time=String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
+  dayData(cursor).entries.push({ id:genId(), time:time, text:v, ts:Date.now() });
+  save(); ta.value=""; editingId=null; renderCalendar(); renderEntries(); toast("기록을 추가했어요");
 }
 
-document.getElementById("prevDay").onclick=()=>shiftDay(-1);
-document.getElementById("nextDay").onclick=()=>shiftDay(1);
-document.getElementById("dateBtn").onclick=openCalendar;
-document.getElementById("calRefresh").onclick=()=>loadSchedule(true);
-document.getElementById("entryAddBtn").onclick=addEntry;
+/* ---------- render ---------- */
+function renderAll(){
+  document.getElementById("selDate").textContent = (cursor===todayStr()?"오늘 · ":"")+cursor+" ("+wkOf(cursor)+")";
+  editingId=null;
+  renderCalendar(); renderGoals(); renderSchedule(); renderEntries();
+}
+
 document.getElementById("calPrev").onclick=()=>{ calMonth.setMonth(calMonth.getMonth()-1); renderCalendar(); };
 document.getElementById("calNext").onclick=()=>{ calMonth.setMonth(calMonth.getMonth()+1); renderCalendar(); };
-document.getElementById("calToday").onclick=()=>{ cursor=todayStr(); closeCalendar(); render(); };
-document.getElementById("calClose").onclick=closeCalendar;
-document.getElementById("calBackdrop").addEventListener("click",e=>{ if(e.target.id==="calBackdrop") closeCalendar(); });
+document.getElementById("calToday").onclick=()=>{ cursor=todayStr(); calMonth=new Date(parseD(cursor).getFullYear(),parseD(cursor).getMonth(),1); renderAll(); };
+document.getElementById("goalAddOpen").onclick=openGoalSheet;
+document.getElementById("goalSave").onclick=addGoal;
+document.getElementById("goalCancel").onclick=closeGoalSheet;
+document.getElementById("goalBackdrop").addEventListener("click",e=>{ if(e.target.id==="goalBackdrop") closeGoalSheet(); });
+document.getElementById("schAddOpen").onclick=openSchSheet;
+document.getElementById("schSave").onclick=addSchedule;
+document.getElementById("schCancel").onclick=closeSchSheet;
+document.getElementById("schBackdrop").addEventListener("click",e=>{ if(e.target.id==="schBackdrop") closeSchSheet(); });
+document.getElementById("schText").addEventListener("keydown",e=>{ if(e.key==="Enter") addSchedule(); });
+document.getElementById("entryAddBtn").onclick=addEntry;
 
 let toastTimer=null;
 function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("on"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("on"),1600); }
 
-render();
+calMonth=new Date(parseD(cursor).getFullYear(), parseD(cursor).getMonth(), 1);
+renderAll();
 <\/script>
 </body>
 </html>
