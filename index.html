@@ -974,6 +974,20 @@ render();
 
   .addbtn2{ width:100%; background:#fff; border:1px dashed #cfd4da; border-radius:12px; padding:12px; font-size:14px; font-weight:700; color:#5a5f68; cursor:pointer; }
   .addbtn2:active{ background:#f6f7f9; }
+  .datechips{ display:flex; align-items:center; gap:8px; margin:2px 0 12px; }
+  .datechips .sd{ flex:1; font-size:16px; font-weight:800; }
+  .chip{ background:#efeaff; color:#5a44e0; border:none; border-radius:99px; padding:7px 13px; font-size:13px; font-weight:700; cursor:pointer; }
+  .chip:active{ opacity:.8; }
+  .subttl{ font-size:12px; color:#8a8f98; font-weight:700; margin:14px 0 6px; padding-top:12px; border-top:1px dashed #eceef2; }
+  .act{ display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid #f0f2f5; }
+  .act:first-child{ border-top:none; }
+  .act .chk{ flex:0 0 auto; width:20px; height:20px; border-radius:6px; border:1.6px solid #cfd4da; background:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:12px; color:#fff; }
+  .act .chk.on{ background:#6d5efc; border-color:#6d5efc; }
+  .act .tx{ flex:1; font-size:14px; color:#2c2c2a; word-break:break-word; }
+  .act.done .tx{ color:#b3b8bf; text-decoration:line-through; }
+  .act .del{ background:none; border:none; color:#c4c8ce; font-size:16px; cursor:pointer; }
+  .addsm{ width:100%; background:#fff; border:1px dashed #cfd4da; border-radius:10px; padding:10px; font-size:13px; font-weight:700; color:#5a5f68; cursor:pointer; margin-top:10px; }
+  .addsm:active{ background:#f6f7f9; }
   .backdrop{ position:fixed; inset:0; background:rgba(20,22,26,.42); display:none; align-items:flex-end; justify-content:center; z-index:50; }
   .backdrop.on{ display:flex; }
   .sheet{ background:#fff; width:100%; max-width:520px; border-radius:20px 20px 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom)); }
@@ -1004,20 +1018,25 @@ render();
     <div class="caltoday"><button id="calToday">오늘로</button></div>
   </div>
 
-  <div class="seldate" id="selDate"></div>
+  <div class="datechips">
+    <div class="sd" id="selDate"></div>
+    <button class="chip" id="goalAddOpen">＋ 목표</button>
+    <button class="chip" id="schAddOpen">＋ 일정</button>
+  </div>
 
-  <!-- 목표 / D-day -->
+  <!-- 목표 / D-day + 목표 실천 -->
   <div class="card">
     <div class="ctitle">🎯 목표 · D-day</div>
     <div id="goalList"></div>
-    <button class="addbtn2" id="goalAddOpen">＋ 목표 추가</button>
+    <div class="subttl">✅ 이 날 목표 실천</div>
+    <div id="actList"></div>
+    <button class="addsm" id="actAddOpen">＋ 목표 실천 추가</button>
   </div>
 
   <!-- 시간별 일정 -->
   <div class="card">
     <div class="ctitle" id="schTitle">🕐 일정</div>
     <div id="schList"></div>
-    <button class="addbtn2" id="schAddOpen">＋ 일정 추가</button>
   </div>
 
   <!-- 일기 -->
@@ -1040,6 +1059,16 @@ render();
     <label>목표 날짜 (D-day)</label>
     <input type="date" id="goalDate">
     <div class="actions"><button class="btn ghost" id="goalCancel">취소</button><button class="btn primary" id="goalSave">저장</button></div>
+  </div>
+</div>
+
+<!-- 목표 실천 추가 시트 -->
+<div class="backdrop" id="actBackdrop">
+  <div class="sheet">
+    <h3 id="actSheetTitle">✅ 목표 실천 추가</h3>
+    <label>이 날 목표를 위해 할 일</label>
+    <input type="text" id="actText" placeholder="예: 유산소 40분 · 물 2L · 식단 지키기" autocomplete="off">
+    <div class="actions"><button class="btn ghost" id="actCancel">취소</button><button class="btn primary" id="actSave">저장</button></div>
   </div>
 </div>
 
@@ -1080,10 +1109,11 @@ function dayData(date){
   const d=db.days[date];
   if(!Array.isArray(d.entries)) d.entries=[];
   if(!Array.isArray(d.schedule)) d.schedule=[];
+  if(!Array.isArray(d.goalActions)) d.goalActions=[];
   if(d.diary && d.diary.trim()){ d.entries.push({ id:genId(), time:"", text:d.diary, ts:1 }); delete d.diary; save(); }
   return d;
 }
-function dayHasStuff(ds){ const d=db.days[ds]; return !!d && ((d.schedule&&d.schedule.length)||(d.entries&&d.entries.length)||(d.diary&&String(d.diary).trim())); }
+function dayHasStuff(ds){ const d=db.days[ds]; return !!d && ((d.schedule&&d.schedule.length)||(d.entries&&d.entries.length)||(d.goalActions&&d.goalActions.length)||(d.diary&&String(d.diary).trim())); }
 
 /* ---------- 캘린더 ---------- */
 function renderCalendar(){
@@ -1105,7 +1135,8 @@ function renderCalendar(){
 
 /* ---------- 목표 / D-day ---------- */
 function ddayLabel(target){
-  const diff=Math.round((parseD(target)-parseD(todayStr()))/86400000);
+  // 선택한 날짜(cursor) 기준으로 남은 일수 계산
+  const diff=Math.round((parseD(target)-parseD(cursor))/86400000);
   if(diff>0) return {t:"D-"+diff, over:false};
   if(diff===0) return {t:"D-DAY", over:false};
   return {t:"D+"+(-diff), over:true};
@@ -1167,6 +1198,32 @@ function openSchSheet(){
 }
 function closeSchSheet(){ document.getElementById("schBackdrop").classList.remove("on"); }
 
+/* ---------- 목표 실천 (그날 할 일) ---------- */
+function renderActions(){
+  const box=document.getElementById("actList");
+  const list=dayData(cursor).goalActions;
+  if(!list.length){ box.innerHTML=`<div class="empty">목표를 위해 이 날 할 일을 추가해보세요.</div>`; return; }
+  box.innerHTML="";
+  list.forEach(a=>{
+    const row=document.createElement("div"); row.className="act"+(a.done?" done":"");
+    row.innerHTML=`<div class="chk${a.done?" on":""}">${a.done?"✓":""}</div><div class="tx">${esc(a.text)}</div><button class="del">×</button>`;
+    row.querySelector(".chk").onclick=()=>{ a.done=!a.done; save(); renderActions(); };
+    row.querySelector(".del").onclick=()=>{ const arr=dayData(cursor).goalActions; const i=arr.findIndex(x=>x.id===a.id); if(i>=0) arr.splice(i,1); save(); renderCalendar(); renderActions(); };
+    box.appendChild(row);
+  });
+}
+function addAction(){
+  const v=document.getElementById("actText").value.trim(); if(!v){ toast("할 일을 입력하세요"); return; }
+  dayData(cursor).goalActions.push({ id:genId(), text:v, done:false });
+  save(); renderCalendar(); renderActions(); closeActSheet(); toast("추가했어요");
+}
+function openActSheet(){
+  document.getElementById("actText").value="";
+  document.getElementById("actSheetTitle").textContent="✅ "+(cursor===todayStr()?"오늘":`${parseD(cursor).getMonth()+1}월 ${parseD(cursor).getDate()}일`)+" 목표 실천 추가";
+  document.getElementById("actBackdrop").classList.add("on"); setTimeout(()=>document.getElementById("actText").focus(),80);
+}
+function closeActSheet(){ document.getElementById("actBackdrop").classList.remove("on"); }
+
 /* ---------- 일기 (시간대별) ---------- */
 function renderEntries(){
   const box=document.getElementById("entriesBox");
@@ -1211,7 +1268,7 @@ function addEntry(){
 function renderAll(){
   document.getElementById("selDate").textContent = (cursor===todayStr()?"오늘 · ":"")+cursor+" ("+wkOf(cursor)+")";
   editingId=null;
-  renderCalendar(); renderGoals(); renderSchedule(); renderEntries();
+  renderCalendar(); renderGoals(); renderActions(); renderSchedule(); renderEntries();
 }
 
 document.getElementById("calPrev").onclick=()=>{ calMonth.setMonth(calMonth.getMonth()-1); renderCalendar(); };
@@ -1225,6 +1282,11 @@ document.getElementById("schAddOpen").onclick=openSchSheet;
 document.getElementById("schSave").onclick=addSchedule;
 document.getElementById("schCancel").onclick=closeSchSheet;
 document.getElementById("schBackdrop").addEventListener("click",e=>{ if(e.target.id==="schBackdrop") closeSchSheet(); });
+document.getElementById("actAddOpen").onclick=openActSheet;
+document.getElementById("actSave").onclick=addAction;
+document.getElementById("actCancel").onclick=closeActSheet;
+document.getElementById("actText").addEventListener("keydown",e=>{ if(e.key==="Enter") addAction(); });
+document.getElementById("actBackdrop").addEventListener("click",e=>{ if(e.target.id==="actBackdrop") closeActSheet(); });
 document.getElementById("schText").addEventListener("keydown",e=>{ if(e.key==="Enter") addSchedule(); });
 document.getElementById("entryAddBtn").onclick=addEntry;
 
@@ -3119,7 +3181,7 @@ function srcFor(id){
 }
 var frames={
   daily:{ el:document.getElementById("f-daily"), src:"src-daily", loaded:false, reload:true },
-  diary:{ el:document.getElementById("f-diary"), src:"src-diary", loaded:false, reload:false },
+  diary:{ el:document.getElementById("f-diary"), src:"src-diary", loaded:false, reload:true },
   diet:{ el:document.getElementById("f-diet"), src:"src-diet", loaded:false, reload:false },
   workout:{ el:document.getElementById("f-workout"), src:"src-workout", loaded:false, reload:false }
 };
