@@ -257,9 +257,7 @@
     <button class="csvbtn" id="excelBtn">📊 전체 Excel 내보내기 (식단·운동·일기·데일리)</button>
     <button class="csvbtn" id="dailyCsvBtn">⬇ 요약 CSV 내보내기 (날짜별 한 줄)</button>
     <button class="csvbtn" id="driveConnect">☁️ Google Drive 연결</button>
-    <button class="csvbtn" id="driveUpload" hidden>이 기기의 기록을 Drive에 저장</button>
-    <label id="driveVersions" hidden>Drive 저장본 <select id="driveSnapshot" aria-label="Drive 저장본"></select></label>
-    <button class="csvbtn" id="driveDownload" hidden>선택한 Drive 기록 불러오기</button>
+    <button class="csvbtn" id="driveSync" hidden>↻ Drive와 동기화</button>
     <p id="driveStatus" role="status"></p>
     <button class="csvbtn" id="fullBackupBtn">💾 전체 백업 (.json) — 사진 포함</button>
     <button class="csvbtn" id="fullRestoreBtn">♻️ 전체 복원 (.json)</button>
@@ -743,16 +741,14 @@ async function collectFull(strict=true){
   }
   return pack;
 }
-async function replaceDriveBackup(pack){
+async function replaceDriveBackup(pack, previous){
   const isObject=value=>value!==null && typeof value==="object" && !Array.isArray(value);
   if(!pack || pack.app!=="daily-hub-full" || pack.version!==1 ||
     !backupStores.every(([name])=>isObject(pack[name]) && isObject(pack[name].photos) &&
       (pack[name].data===null || (isObject(pack[name].data) && isObject(pack[name].data.days))))){
     throw new Error("지원하는 데일리 허브 저장본이 아니에요.");
   }
-  const previous=await collectFull();
-  if(!confirm("선택한 Drive 저장본으로 이 기기의 기록과 사진을 교체할까요?")) return;
-  async function apply(snapshot){
+  async function apply(snapshot, rollback=false){
     for(const [name,key,db] of backupStores){
       const {data,photos}=snapshot[name];
       const store=await openStore(db);
@@ -762,8 +758,10 @@ async function replaceDriveBackup(pack){
         tx.onabort=()=>reject(tx.error || new Error("사진 저장이 중단됐어요."));
         const items=tx.objectStore("photos");
         try{
-          items.clear();
-          for(const [id,photo] of Object.entries(photos)) items.put(photo,id);
+          if(rollback) items.clear();
+          const oldPhotos=rollback ? {} : previous[name].photos;
+          for(const id of Object.keys(oldPhotos)) if(!Object.hasOwn(photos,id)) items.delete(id);
+          for(const [id,photo] of Object.entries(photos)) if(photo!==oldPhotos[id]) items.put(photo,id);
         }catch(error){
           tx.abort();
           reject(error);
@@ -775,7 +773,7 @@ async function replaceDriveBackup(pack){
   }
   try{ await apply(pack); }
   catch(error){
-    try{ await apply(previous); }
+    try{ await apply(previous,true); }
     catch{ throw new Error("복원을 마치지 못했어요. 저장해 둔 전체 백업으로 복원해 주세요."); }
     throw error;
   }
@@ -919,54 +917,85 @@ document.getElementById("setClose").onclick=closeSettings;
 document.getElementById("dailyCsvBtn").onclick=exportDailyCsv;
 document.getElementById("excelBtn").onclick=exportExcel;
 const driveConnect=document.getElementById("driveConnect");
-const driveUpload=document.getElementById("driveUpload");
-const driveDownload=document.getElementById("driveDownload");
-const driveSnapshot=document.getElementById("driveSnapshot");
+const driveSync=document.getElementById("driveSync");
 const driveStatus=document.getElementById("driveStatus");
-let driveReady=false;
-function showDriveVersions(files){
-  const selected=driveSnapshot.value;
-  driveSnapshot.replaceChildren(...files.map(file=>
-    new Option(new Date(file.createdTime).toLocaleString("ko-KR"),file.id)
-  ));
-  if(files.some(file=>file.id===selected)) driveSnapshot.value=selected;
-  document.getElementById("driveVersions").hidden=!files.length;
-  driveDownload.hidden=!files.length;
-  driveUpload.hidden=false;
-  driveReady=true;
+const syncDB="dailyHubSync";
+const changeFile="daily-hub-changes-v1.json";
+let drive=window.top.dailyHubDrive;
+if(drive){
+  driveSync.hidden=!drive.connected();
+  if(sessionStorage.getItem("dailyHub.syncStatus")){
+    driveStatus.textContent=sessionStorage.getItem("dailyHub.syncStatus");
+    sessionStorage.removeItem("dailyHub.syncStatus");
+  }
 }
 async function runDrive(action){
-  const controls=[driveConnect,driveUpload,driveDownload,driveSnapshot];
-  for(const control of controls) control.disabled=true;
+  driveConnect.disabled=driveSync.disabled=true;
   try{ await action(); }
   catch(error){ driveStatus.textContent=error.message || "Drive 작업에 실패했어요."; }
-  finally{ for(const control of controls) control.disabled=false; }
+  finally{ driveConnect.disabled=driveSync.disabled=false; }
 }
 driveConnect.onclick=()=>runDrive(async()=>{
-  const drive=window.top.dailyHubDrive;
   driveStatus.textContent="Google 계정 연결 중…";
   await drive.connect();
-  showDriveVersions(await drive.list());
-  driveStatus.textContent="연결됐어요. 저장 또는 불러오기를 선택하세요.";
+  driveSync.hidden=false;
+  driveStatus.textContent="연결됐어요. Drive와 동기화를 눌러 주세요.";
 });
-driveUpload.onclick=()=>runDrive(async()=>{
-  if(!driveReady) return;
-  const drive=window.top.dailyHubDrive;
-  const files=await drive.list();
-  if(files.length && !confirm("이 기기의 식단·운동·일기·데일리와 사진을 Google Drive에 새 저장본으로 올릴까요? 이전 저장본도 남아요.")) return;
-  if(!files.length && !confirm("이 기기의 식단·운동·일기·데일리와 사진을 연결한 Google Drive에 저장할까요?")) return;
-  driveStatus.textContent="Drive에 저장 중…";
-  const id=await drive.save(await collectFull());
-  driveStatus.textContent="Drive에 새 저장본을 저장했어요.";
-  showDriveVersions(await drive.list());
-  driveSnapshot.value=id;
-});
-driveDownload.onclick=()=>runDrive(async()=>{
-  const drive=window.top.dailyHubDrive;
-  driveStatus.textContent="Drive 저장본을 읽는 중…";
-  if(await replaceDriveBackup(await drive.load(driveSnapshot.value))) window.top.location.reload();
-  else driveStatus.textContent="불러오기를 취소했어요.";
-});
+async function synchronize(){
+  const sync=window.top.dailyHubSync;
+  driveStatus.textContent="기록을 비교하는 중…";
+  const account=await drive.account();
+  const previous=await collectFull();
+  const local=sync.records(previous);
+  const saved=await idbGet(syncDB,account);
+  if(!saved && !confirm("이 Google 계정과 식단·운동·일기·데일리 기록 및 사진을 동기화할까요?")) {
+    driveStatus.textContent="동기화를 취소했어요.";
+    return;
+  }
+  const files=await drive.list(changeFile);
+  files.sort((a,b)=>a.createdTime.localeCompare(b.createdTime) || a.id.localeCompare(b.id));
+  const events=[];
+  for(const file of files){
+    const event=await drive.load(file.id);
+    if(event.app!=="daily-hub-delta" || event.version!==1 || !Array.isArray(event.changes)){
+      throw new Error("Drive의 변경 기록 형식을 확인해 주세요.");
+    }
+    events.push(event);
+  }
+  const legacy=events.length ? events[0].legacy : (await drive.list())[0]?.id ?? null;
+  let remote=sync.records(legacy ? await drive.load(legacy) : null);
+  for(const event of events){
+    remote=sync.apply(remote,event.changes,{replay:true}).state;
+  }
+  const localChanges=sync.diff(saved || {},local);
+  let merged=sync.apply(remote,localChanges,{migration:!saved});
+  if(merged.conflicts){
+    const useLocal=confirm("같은 항목의 기기 기록과 Drive 기록이 달라요. 확인을 누르면 해당 항목은 이 기기의 값을 쓰고, 취소를 누르면 이번 동기화를 중단해요.");
+    if(!useLocal){ driveStatus.textContent="동기화를 취소했어요. 양쪽 기록은 그대로예요."; return; }
+    merged=sync.apply(remote,localChanges,{migration:!saved,overwrite:true});
+  }
+  const changes=sync.diff(remote,merged.state);
+  if(changes.length){
+    driveStatus.textContent="바뀐 기록을 Drive에 저장 중…";
+    await drive.save({
+      app:"daily-hub-delta",version:1,legacy,
+      changes:changes.map(({path,after})=>({path,after}))
+    },changeFile);
+  }
+  const latest=await collectFull();
+  if(sync.diff(local,sync.records(latest)).length){
+    throw new Error("동기화 중 이 기기의 기록이 바뀌었어요. 다시 동기화해 주세요.");
+  }
+  if(sync.diff(local,merged.state).length) await replaceDriveBackup(sync.backup(merged.state),latest);
+  await idbPut(syncDB,account,merged.state);
+  const message="Drive와 동기화했어요.";
+  if(sync.diff(local,merged.state).length){
+    sessionStorage.setItem("dailyHub.syncStatus",message);
+    window.top.refreshDailyHub();
+  }else driveStatus.textContent=message;
+}
+driveSync.onclick=()=>runDrive(()=>navigator.locks ?
+  navigator.locks.request("daily-hub-drive-sync",synchronize) : synchronize());
 document.getElementById("fullBackupBtn").onclick=exportFull;
 document.getElementById("fullRestoreBtn").onclick=pickFull;
 document.getElementById("fullInput").addEventListener("change", onFullFile);
@@ -3310,7 +3339,7 @@ renderView();
     });
   }
 
-  async function request(url, options = {}) {
+  async function authorizedFetch(url, options = {}) {
     const expired = "Google Drive 연결이 만료됐어요. 다시 연결해 주세요.";
     if (!token || Date.now() >= expires) throw new Error(expired);
     const response = await fetch(url, {
@@ -3321,14 +3350,19 @@ renderView();
       token = "";
       throw new Error(expired);
     }
+    return response;
+  }
+
+  async function request(url, options) {
+    const response = await authorizedFetch(url, options);
     if (!response.ok) throw new Error("Google Drive 작업에 실패했어요 (" + response.status + ").");
     return response.json();
   }
 
-  async function list() {
+  async function list(name = filename) {
     const query = new URLSearchParams({
       spaces: "appDataFolder",
-      q: "name = '" + filename + "' and trashed = false",
+      q: "name = '" + name + "' and trashed = false",
       orderBy: "createdTime desc",
       fields: "nextPageToken,files(id,createdTime)",
       pageSize: "100"
@@ -3342,25 +3376,146 @@ renderView();
     } while (true);
   }
 
-  async function save(pack) {
-    const boundary = "daily-hub-" + crypto.randomUUID();
-    const metadata = {name: filename, parents: ["appDataFolder"], mimeType: "application/json"};
-    const body = new Blob([
-      "--" + boundary + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n",
-      JSON.stringify(metadata),
-      "\r\n--" + boundary + "\r\nContent-Type: application/json\r\n\r\n",
-      JSON.stringify(pack),
-      "\r\n--" + boundary + "--\r\n"
-    ]);
-    const file = await request(upload + "?uploadType=multipart&fields=id", {
+  async function save(pack, name = filename) {
+    const data = new Blob([JSON.stringify(pack)], {type: "application/json"});
+    const metadata = {name, parents: ["appDataFolder"], mimeType: data.type};
+    const session = await authorizedFetch(upload + "?uploadType=resumable&fields=id", {
       method: "POST",
-      headers: {"Content-Type": "multipart/related; boundary=" + boundary},
-      body
+      headers: {
+        "Content-Type": "application/json",
+        "X-Upload-Content-Type": data.type,
+        "X-Upload-Content-Length": String(data.size)
+      },
+      body: JSON.stringify(metadata)
     });
-    return file.id;
+    if (!session.ok) throw new Error("Drive 업로드를 시작하지 못했어요 (" + session.status + ").");
+    const location = session.headers.get("Location");
+    if (!location || new URL(location).origin !== new URL(upload).origin) {
+      throw new Error("Drive 업로드 주소를 확인하지 못했어요.");
+    }
+
+    const chunkSize = 4 * 1024 * 1024;
+    let offset = 0;
+    while (offset < data.size) {
+      const end = Math.min(offset + chunkSize, data.size);
+      const response = await authorizedFetch(location, {
+        method: "PUT",
+        headers: {
+          "Content-Type": data.type,
+          "Content-Range": "bytes " + offset + "-" + (end - 1) + "/" + data.size
+        },
+        body: data.slice(offset, end)
+      });
+      if (response.ok) return (await response.json()).id;
+      if (response.status !== 308) {
+        throw new Error("Drive 업로드가 중단됐어요 (" + response.status + "). 다시 저장해 주세요.");
+      }
+      const range = /^bytes=0-(\d+)$/.exec(response.headers.get("Range") || "");
+      const next = range ? Number(range[1]) + 1 : 0;
+      if (next <= offset || next > end) throw new Error("Drive가 받은 용량을 확인하지 못했어요. 다시 저장해 주세요.");
+      offset = next;
+    }
+    throw new Error("Drive에서 저장 완료를 확인하지 못했어요.");
   }
 
-  return {connect, list, save, load: id => request(api + "/" + encodeURIComponent(id) + "?alt=media")};
+  return {connect, list, save, connected: () => Boolean(token) && Date.now() < expires,
+    account: async () => (await request("https://www.googleapis.com/drive/v3/about?fields=user(permissionId)")).user.permissionId,
+    load: id => request(api + "/" + encodeURIComponent(id) + "?alt=media")};
+})();
+</script>
+<script>window.dailyHubSync = (() => {
+  const sections = ["diet", "workout", "daily"];
+  const arrayMarker = "$dailyHubArray";
+  const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
+  const own = (value, key) => object(value) && Object.hasOwn(value, key) ? value[key] : undefined;
+  const sorted = entries => Object.fromEntries(entries.sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+  function encode(value) {
+    if (Array.isArray(value)) {
+      const ids = value.map(item => typeof item === "string" ? "s:" + item :
+        object(item) && typeof item.id === "string" ? "i:" + item.id : null);
+      if (ids.every(id => id !== null) && new Set(ids).size === ids.length) {
+        return sorted([[arrayMarker, true], ...value.map((item, i) => [ids[i], encode(item)])]);
+      }
+      return value.map(encode);
+    }
+    return object(value) ? sorted(Object.entries(value).map(([key, item]) => [key, encode(item)])) : value;
+  }
+
+  function decode(value) {
+    if (Array.isArray(value)) return value.map(decode);
+    if (!object(value)) return value;
+    if (own(value, arrayMarker) === true) {
+      return Object.entries(value).filter(([key]) => key !== arrayMarker).map(([, item]) => decode(item));
+    }
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, decode(item)]));
+  }
+
+  function records(pack) {
+    if (!pack) return {};
+    if (pack.app !== "daily-hub-full" || pack.version !== 1 ||
+        !sections.every(key => object(pack[key]) && object(pack[key].photos) &&
+          (pack[key].data === null || object(pack[key].data?.days)))) {
+      throw new Error("Drive에 있는 전체 저장본을 읽을 수 없어요.");
+    }
+    return encode(Object.fromEntries(sections.map(key => [
+      key, {photos: pack[key].photos, ...(pack[key].data ? {data: pack[key].data} : {})}
+    ])));
+  }
+
+  function backup(state) {
+    return {
+      app: "daily-hub-full", version: 1, exportedAt: new Date().toISOString(),
+      ...Object.fromEntries(sections.map(key => [
+        key, {data: decode(state[key]?.data) ?? null, photos: decode(state[key]?.photos) ?? {}}
+      ]))
+    };
+  }
+
+  function diff(before, after, path = [], changes = []) {
+    if (same(before, after)) return changes;
+    const key = path.at(-1);
+    const record = key?.startsWith("i:") || (path[1] === "photos" && path.length === 3);
+    if (!record && ((object(before) && object(after)) || (before === undefined && object(after)))) {
+      const keys = new Set([...Object.keys(before || {}), ...Object.keys(after)]);
+      if (keys.size) {
+        for (const key of keys) diff(own(before, key), own(after, key), [...path, key], changes);
+        return changes;
+      }
+    }
+    changes.push({path, before, after});
+    return changes;
+  }
+
+  function apply(state, changes, {migration = false, overwrite = false, replay = false} = {}) {
+    const result = structuredClone(state);
+    let conflicts = 0;
+    for (const {path, before, after} of changes) {
+      if (!Array.isArray(path) || !sections.includes(path[0]) || path.some(key =>
+        typeof key !== "string" || ["__proto__", "constructor", "prototype"].includes(key))) {
+        throw new Error("Drive에 있는 변경 기록을 읽을 수 없어요.");
+      }
+      const current = path.reduce(own, result);
+      if (same(current, after) || (migration && after === undefined)) continue;
+      if (!replay && !same(current, before)) {
+        if (migration && object(after) && !Object.keys(after).length) continue;
+        conflicts++;
+        if (!overwrite) continue;
+      }
+      let parent = result;
+      for (const key of path.slice(0, -1)) {
+        if (!object(own(parent, key))) parent[key] = {};
+        parent = parent[key];
+      }
+      const key = path.at(-1);
+      if (after === undefined) delete parent[key];
+      else parent[key] = structuredClone(after);
+    }
+    return {state: encode(result), conflicts};
+  }
+
+  return {records, backup, diff, apply};
 })();
 </script>
 <script>
@@ -3390,6 +3545,13 @@ function activate(name){
 document.querySelectorAll(".tabbar button").forEach(function(b){
   b.onclick=function(){ activate(b.dataset.tab); };
 });
+function refreshDailyHub(){
+  Object.values(frames).forEach(frame=>{
+    frame.loaded=false;
+    frame.el.removeAttribute("srcdoc");
+  });
+  activate("daily");
+}
 // initial: load daily (home)
 activate("daily");
 </script>
